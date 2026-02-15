@@ -2,6 +2,7 @@ package uuid
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -71,6 +72,28 @@ func TestParseErrorsAsType(t *testing.T) {
 	}
 }
 
+func TestParseErrorMessage(t *testing.T) {
+	_, err := Parse("bad")
+	msg := err.Error()
+	if msg == "" {
+		t.Fatal("ParseError.Error() should not be empty")
+	}
+	if !strings.Contains(msg, "bad") {
+		t.Errorf("ParseError.Error() = %q, should contain input", msg)
+	}
+}
+
+func TestLengthErrorMessage(t *testing.T) {
+	_, err := FromBytes([]byte{1, 2})
+	msg := err.Error()
+	if msg == "" {
+		t.Fatal("LengthError.Error() should not be empty")
+	}
+	if !strings.Contains(msg, "2") {
+		t.Errorf("LengthError.Error() = %q, should contain length", msg)
+	}
+}
+
 func TestParseLenient(t *testing.T) {
 	want := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	tests := []struct {
@@ -103,6 +126,7 @@ func TestParseLenientErrors(t *testing.T) {
 	}{
 		{"", "empty"},
 		{"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "invalid hex"},
+		{"6ba7b810+9dad+11d1+80b4+00c04fd430c8", "bad hyphens standard"},
 		{"abc:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8", "wrong URN prefix"},
 		{"[6ba7b810-9dad-11d1-80b4-00c04fd430c8]", "wrong braces"},
 		{"6ba7b8109dad11d180b400c04fd430cg", "invalid hex compact"},

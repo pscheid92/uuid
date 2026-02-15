@@ -25,6 +25,28 @@ func TestAppendText(t *testing.T) {
 	if string(buf) != "uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8" {
 		t.Errorf("AppendText(prefix) = %q", buf)
 	}
+
+	// Force grow reallocation: full-capacity slice with no room for 36 bytes
+	tight := make([]byte, 4)
+	copy(tight, "pre:")
+	buf, err = u.AppendText(tight)
+	if err != nil {
+		t.Fatalf("AppendText(tight) error: %v", err)
+	}
+	if string(buf) != "pre:6ba7b810-9dad-11d1-80b4-00c04fd430c8" {
+		t.Errorf("AppendText(tight) = %q", buf)
+	}
+
+	// Exercise grow fast path: slice with plenty of spare capacity
+	spacious := make([]byte, 4, 50)
+	copy(spacious, "pre:")
+	buf, err = u.AppendText(spacious)
+	if err != nil {
+		t.Fatalf("AppendText(spacious) error: %v", err)
+	}
+	if string(buf) != "pre:6ba7b810-9dad-11d1-80b4-00c04fd430c8" {
+		t.Errorf("AppendText(spacious) = %q", buf)
+	}
 }
 
 func TestAppendBinary(t *testing.T) {
@@ -73,6 +95,23 @@ func TestUnmarshalTextError(t *testing.T) {
 	err := u.UnmarshalText([]byte("invalid"))
 	if err == nil {
 		t.Fatal("UnmarshalText should fail on invalid input")
+	}
+}
+
+func TestUnmarshalTextBadHyphens(t *testing.T) {
+	var u UUID
+	err := u.UnmarshalText([]byte("6ba7b810+9dad-11d1-80b4-00c04fd430c8"))
+	if err == nil {
+		t.Fatal("UnmarshalText should fail on bad hyphens")
+	}
+}
+
+func TestUnmarshalTextInvalidHex(t *testing.T) {
+	var u UUID
+	// Valid length and hyphens, but 'zz' is invalid hex
+	err := u.UnmarshalText([]byte("zza7b810-9dad-11d1-80b4-00c04fd430c8"))
+	if err == nil {
+		t.Fatal("UnmarshalText should fail on invalid hex")
 	}
 }
 
