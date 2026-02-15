@@ -1,3 +1,8 @@
+[![CI](https://github.com/pscheid92/uuid/actions/workflows/ci.yml/badge.svg)](https://github.com/pscheid92/uuid/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pscheid92/uuid.svg)](https://pkg.go.dev/github.com/pscheid92/uuid)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pscheid92/uuid)](https://goreportcard.com/report/github.com/pscheid92/uuid)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 # uuid
 
 A modern Go UUID library implementing [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562). Zero external dependencies. Requires Go 1.26+.
@@ -154,3 +159,7 @@ uuid.NamespaceX500  // 6ba7b814-9dad-11d1-80b4-00c04fd430c8
 - **No NullUUID** — Use `*UUID` for nullable values in SQL and JSON.
 - **Zero-alloc hot paths** — NewV4, NewV7, Parse, MarshalText, and UnmarshalText allocate nothing.
 - **Zero dependencies** — Only uses the Go standard library.
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.

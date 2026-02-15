@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Verify 100% coverage
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep ^total: | awk '{print $3}')
+          echo "Coverage: $COVERAGE"
+          if [ "$COVERAGE" != "100.0%" ]; then
+            echo "FAIL: coverage is $COVERAGE, expected 100.0%"
+            exit 1
+          fi
+
+      - name: Fuzz Parse
+        run: go test -fuzz='^FuzzParse$' -fuzztime=10s ./...
+
+      - name: Fuzz ParseLenient
+        run: go test -fuzz=FuzzParseLenient -fuzztime=10s ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Benchmarks (root)
+        run: go test -bench=. -benchmem -count=1 -benchtime=1s ./...
+
+      - name: Benchmarks (comparison)
+        run: cd bench && go test -bench=. -benchmem -count=1 -benchtime=1s ./...
