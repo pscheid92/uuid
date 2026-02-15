@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `encoding.TextAppender` / `BinaryAppender` (Go 1.24) for zero-alloc formatting
 - `database/sql.Scanner` and `driver.Valuer` for SQL support
 - `hash.Cloner` optimization for V3/V5 namespace hash states
-- Zero-alloc hot paths for NewV4, NewV7, Parse, MarshalText, UnmarshalText
+- `Pool` type with `NewV4` and `NewV7` for amortized `crypto/rand` overhead
+- `NewV4Batch(n)` and `Generator.NewV7Batch(n)` for bulk UUID generation
+- Zero-alloc hot paths for NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, MarshalText, UnmarshalText
 - 100% test coverage including fuzz tests
 
 [0.1.0]: https://github.com/pscheid92/uuid/releases/tag/v0.1.0
