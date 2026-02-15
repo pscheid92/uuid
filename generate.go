@@ -89,7 +89,7 @@ func hashUUID(namespace UUID, name string, ver Version, newHash func() hash.Hash
 	var u UUID
 	copy(u[:], sum[:16])
 	u[6] = (u[6] & 0x0f) | (byte(ver) << 4) // version
-	u[8] = (u[8] & 0x3f) | 0x80              // variant RFC 9562
+	u[8] = (u[8] & 0x3f) | 0x80             // variant RFC 9562
 	return u
 }
 

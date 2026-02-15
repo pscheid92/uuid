@@ -69,26 +69,17 @@ func Parse(s string) (UUID, error) {
 func ParseLenient(s string) (UUID, error) {
 	switch len(s) {
 	case 36: // standard
-		if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
-			return Nil, &ParseError{Input: s, Msg: "expected hyphens at positions 8, 13, 18, 23"}
-		}
 		return parseHex(s, 0)
 
 	case 45: // urn:uuid:
 		if s[:9] != "urn:uuid:" {
 			return Nil, &ParseError{Input: s, Msg: "expected urn:uuid: prefix"}
 		}
-		if s[17] != '-' || s[22] != '-' || s[27] != '-' || s[32] != '-' {
-			return Nil, &ParseError{Input: s, Msg: "expected hyphens in UUID portion"}
-		}
 		return parseHex(s, 9)
 
 	case 38: // {braced}
 		if s[0] != '{' || s[37] != '}' {
 			return Nil, &ParseError{Input: s, Msg: "expected braces"}
-		}
-		if s[9] != '-' || s[14] != '-' || s[19] != '-' || s[24] != '-' {
-			return Nil, &ParseError{Input: s, Msg: "expected hyphens in UUID portion"}
 		}
 		return parseHex(s, 1)
 
@@ -121,6 +112,9 @@ func FromBytes(b []byte) (UUID, error) {
 // parseHex decodes the 32 hex digits from s starting at offset,
 // skipping the hyphens at the standard positions.
 func parseHex(s string, offset int) (UUID, error) {
+	if s[offset+8] != '-' || s[offset+13] != '-' || s[offset+18] != '-' || s[offset+23] != '-' {
+		return Nil, &ParseError{Input: s, Msg: "missing or misplaced hyphens"}
+	}
 	var u UUID
 	for i, x := range hexOffsets {
 		x += offset
