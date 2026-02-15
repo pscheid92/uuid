@@ -1,0 +1,45 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - asciicheck
+    - bidichk
+    - copyloopvar
+    - dupword
+    - durationcheck
+    - errname
+    - errorlint
+    - gocritic
+    - godoclint
+    - godot
+    - goprintffuncname
+    - gosec
+    - intrange
+    - misspell
+    - nakedret
+    - nilerr
+    - noctx
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - wastedassign
+
+  exclusions:
+    rules:
+      # MD5 and SHA-1 are required by RFC 9562 for V3/V5 UUIDs, not used for security.
+      - linters: [gosec]
+        rules: [G401, G501, G505]
+        path: generate\.go
+
+  settings:
+    godot:
+      scope: toplevel
+    nakedret:
+      max-func-lines: 0
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
