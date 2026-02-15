@@ -26,11 +26,15 @@ func (u UUID) MarshalText() ([]byte, error) {
 // UnmarshalText parses a UUID from text (strict 36-char format).
 // It implements [encoding.TextUnmarshaler].
 func (u *UUID) UnmarshalText(data []byte) error {
-	id, err := Parse(string(data))
-	if err != nil {
-		return err
+	if len(data) != 36 {
+		return &ParseError{Input: string(data), Msg: "expected 36-character hyphenated format"}
 	}
-	*u = id
+	if data[8] != '-' || data[13] != '-' || data[18] != '-' || data[23] != '-' {
+		return &ParseError{Input: string(data), Msg: "expected hyphens at positions 8, 13, 18, 23"}
+	}
+	if !parseHexBytes(u, data, 0) {
+		return &ParseError{Input: string(data), Msg: "invalid hex character"}
+	}
 	return nil
 }
 
