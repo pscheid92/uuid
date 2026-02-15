@@ -58,15 +58,15 @@ func TestNewV7MonotonicSameMillisecond(t *testing.T) {
 			t.Errorf("expected b < c: %s >= %s", b, c)
 		}
 
-		// Timestamps should be strictly increasing
+		// Millisecond timestamps are the same (sub-ms ordering is in rand_a)
 		ta := a.Time()
 		tb := b.Time()
 		tc := c.Time()
-		if !tb.After(ta) {
-			t.Errorf("expected b.Time > a.Time: %v <= %v", tb, ta)
+		if !ta.Equal(tb) {
+			t.Errorf("expected same ms timestamp: a=%v, b=%v", ta, tb)
 		}
-		if !tc.After(tb) {
-			t.Errorf("expected c.Time > b.Time: %v <= %v", tc, tb)
+		if !tb.Equal(tc) {
+			t.Errorf("expected same ms timestamp: b=%v, c=%v", tb, tc)
 		}
 	})
 }
