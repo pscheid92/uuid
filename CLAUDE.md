@@ -18,13 +18,12 @@ cd bench && go test -bench=. -benchmem ./...          # comparison benchmarks vs
 
 Single flat package at the module root. Each file has a focused responsibility:
 
-- `doc.go` — package doc, Nil/Max constants, Namespace UUIDs (DNS, URL, OID, X500)
-- `uuid.go` — UUID [16]byte type, Version, Variant, String, URN, Compare, IsNil, Bytes, Time
+- `doc.go` — package comment only
+- `uuid.go` — UUID type, Nil/Max, Namespace constants, Version/Variant types (VNil/V3/V4/V5/V7/V8/VMax), accessors (Version/Variant/IsNil/Bytes/Time/Compare)
 - `errors.go` — ParseError, LengthError (use `errors.AsType[*ParseError](err)`)
 - `parse.go` — Parse (strict 36-char), ParseLenient (URN/braced/compact), MustParse, FromBytes; hex lookup table + offset array
-- `format.go` — AppendText, AppendBinary, Marshal/Unmarshal (Text + Binary)
-- `generate.go` — NewV4, NewV3, NewV5, NewV8 (stateless, no mutable state)
-- `generator.go` — Generator type with sync.Mutex for V7 per-instance monotonicity (RFC 9562 Method 3)
+- `format.go` — String, URN, encodeHex, AppendText/Binary, Marshal/Unmarshal (Text + Binary)
+- `generate.go` — NewV3/V4/V5/V7/V8, Generator type with per-instance V7 monotonicity (RFC 9562 Method 3), hash.Cloner setup
 - `sql.go` — Scan (database/sql.Scanner), Value (driver.Valuer)
 - `bench/` — separate Go module with comparison benchmarks against google/uuid and gofrs/uuid
 
@@ -43,7 +42,7 @@ Single flat package at the module root. Each file has a focused responsibility:
 
 - `encoding.TextAppender` / `BinaryAppender` (1.24) — format.go
 - `hash.Cloner` (1.25) — generate.go namespace hash cloning
-- `testing/synctest` (1.25) — generator_test.go fake clock for V7
+- `testing/synctest` (1.25) — generate_test.go fake clock for V7
 - `crypto/rand` infallible (1.26) — NewV4 returns UUID, no error
 - `testing/cryptotest.SetGlobalRandom` (1.26) — deterministic test randomness
 - `errors.AsType[E]()` (1.26) — typed error matching in tests
