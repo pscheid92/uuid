@@ -32,6 +32,14 @@ linters:
       - linters: [gosec]
         rules: [G505]
         path: generate\.go
+      # Narrowing int64/uint64 to byte after shifting is intentional in bit packing.
+      - linters: [gosec]
+        rules: [G115]
+        path: _test\.go
+      # Loop bounds are guaranteed by fixed-size arrays (hexOffsets [16]int, UUID [16]byte).
+      - linters: [gosec]
+        rules: [G602]
+        path: \.go
 
   settings:
     godot:
