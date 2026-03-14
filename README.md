@@ -26,7 +26,6 @@ fmt.Println(id.String())                                  // "550e8400-e29b-41d4
 
 | Version | Description | Function |
 |---------|-------------|----------|
-| V3 | Deterministic (MD5) | `NewV3(namespace, name)` |
 | V4 | Random | `NewV4()` / `Pool.NewV4()` / `NewV4Batch(n)` |
 | V5 | Deterministic (SHA-1) | `NewV5(namespace, name)` |
 | V7 | Timestamp + random | `NewV7()` / `Pool.NewV7()` / `Generator.NewV7Batch(n)` |
@@ -46,10 +45,6 @@ id := uuid.NewV7()
 // Deterministic (V5, SHA-1) - same inputs always produce the same UUID
 id := uuid.NewV5(uuid.NamespaceDNS, "www.example.com")
 // 2ed6657d-e927-568b-95e1-2665a8aea6a2
-
-// Deterministic (V3, MD5) - prefer V5 over V3
-id := uuid.NewV3(uuid.NamespaceDNS, "www.example.com")
-// 5df41881-3aed-3515-88a7-2f4a814cf09e
 ```
 
 ### Parsing & Formatting
@@ -110,10 +105,10 @@ Go already has [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](ht
 - **Zero allocations**: NewV4, NewV7, Parse, MarshalText, and UnmarshalText all allocate nothing. Other libraries allocate at least once per call.
 - **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~25x faster bulk V4) amortize `crypto/rand` cost. No equivalent exists in other libraries.
 - **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
-- **No global mutable state**: No `SetRand`, no global clock. V3/V4/V5/V8 are pure functions. V7 monotonicity is scoped to a `Generator` instance.
+- **No global mutable state**: No `SetRand`, no global clock. V4/V5/V8 are pure functions. V7 monotonicity is scoped to a `Generator` instance.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
 - **Simple value type**: `UUID` is `[16]byte`: comparable, copyable, safe as map key. No `NullUUID` - use `*UUID` for nullable SQL/JSON fields.
-- **Modern Go, zero dependencies**: Targets Go 1.26+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `hash.Cloner`. Only stdlib. No legacy baggage, no V1/V2/V6.
+- **Modern Go, zero dependencies**: Targets Go 1.26+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `hash.Cloner`. Only stdlib. No legacy baggage, no V1/V2/V3/V6.
 
 ## Further Reading
 

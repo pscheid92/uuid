@@ -13,12 +13,6 @@ func ExampleNewV4() {
 	// Output: V4
 }
 
-func ExampleNewV3() {
-	id := uuid.NewV3(uuid.NamespaceDNS, "www.example.com")
-	fmt.Println(id)
-	// Output: 5df41881-3aed-3515-88a7-2f4a814cf09e
-}
-
 func ExampleNewV5() {
 	id := uuid.NewV5(uuid.NamespaceDNS, "www.example.com")
 	fmt.Println(id)

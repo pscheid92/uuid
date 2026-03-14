@@ -48,10 +48,10 @@ func TestVersion(t *testing.T) {
 		hex     string
 		version Version
 	}{
-		{"00000000-0000-3000-8000-000000000000", V3},
 		{"00000000-0000-4000-8000-000000000000", V4},
 		{"00000000-0000-5000-8000-000000000000", V5},
 		{"00000000-0000-7000-8000-000000000000", V7},
+		{"00000000-0000-8000-8000-000000000000", V8},
 	}
 	for _, tt := range tests {
 		u := MustParse(tt.hex)
@@ -178,7 +178,6 @@ func TestVersionString(t *testing.T) {
 		want string
 	}{
 		{VNil, "NIL"},
-		{V3, "V3"},
 		{V4, "V4"},
 		{V5, "V5"},
 		{V7, "V7"},

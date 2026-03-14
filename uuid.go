@@ -1,9 +1,8 @@
 // Package uuid implements UUID generation and parsing per RFC 9562.
 //
 // Supported versions:
-//   - V3 (MD5 name-based): deterministic, canonical IDs
 //   - V4 (Random): most common
-//   - V5 (SHA-1 name-based): deterministic, preferred over V3
+//   - V5 (SHA-1 name-based): deterministic, canonical IDs
 //   - V7 (Unix timestamp + random): recommended for new systems
 //   - V8 (Custom/experimental): user-provided data with version+variant bits
 //
@@ -15,7 +14,6 @@
 // Stateless functions require no configuration:
 //
 //	id := uuid.NewV4()                              // random
-//	id := uuid.NewV3(uuid.NamespaceDNS, "example")  // deterministic (MD5)
 //	id := uuid.NewV5(uuid.NamespaceDNS, "example")  // deterministic (SHA-1)
 //
 // For V7 UUIDs with per-instance monotonicity, use a [Generator]:
@@ -76,7 +74,6 @@ type Version uint8
 // UUID version constants.
 const (
 	VNil Version = 0
-	V3   Version = 3
 	V4   Version = 4
 	V5   Version = 5
 	V7   Version = 7
@@ -89,8 +86,6 @@ func (v Version) String() string {
 	switch v {
 	case VNil:
 		return "NIL"
-	case V3:
-		return "V3"
 	case V4:
 		return "V4"
 	case V5:

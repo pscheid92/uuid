@@ -62,9 +62,9 @@ The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >
 
 `NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~25x (V4) and ~15x (V7) speedups over calling the single-UUID functions in a loop.
 
-## V3/V5: hash.Cloner Optimization
+## V5: hash.Cloner Optimization
 
-V3 (MD5) and V5 (SHA-1) hash `namespace || name` to produce deterministic UUIDs. For the four standard namespaces (DNS, URL, OID, X500), the library pre-computes the hash state with the namespace bytes at init time, then uses `hash.Cloner` to clone that state per call - avoiding re-hashing the 16-byte namespace prefix every time.
+V5 (SHA-1) hashes `namespace || name` to produce deterministic UUIDs. For the four standard namespaces (DNS, URL, OID, X500), the library pre-computes the hash state with the namespace bytes at init time, then uses `hash.Cloner` to clone that state per call - avoiding re-hashing the 16-byte namespace prefix every time.
 
 ## Parse: Lookup Table
 

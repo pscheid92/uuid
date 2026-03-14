@@ -8,12 +8,6 @@ func BenchmarkNewV4(b *testing.B) {
 	}
 }
 
-func BenchmarkNewV3(b *testing.B) {
-	for b.Loop() {
-		NewV3(NamespaceDNS, "www.example.com")
-	}
-}
-
 func BenchmarkNewV5(b *testing.B) {
 	for b.Loop() {
 		NewV5(NamespaceDNS, "www.example.com")

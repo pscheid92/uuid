@@ -59,7 +59,7 @@ slices.SortFunc(ids, uuid.Compare)
 
 ## Namespace Constants
 
-Predefined namespace UUIDs for use with `NewV3` and `NewV5` ([RFC 9562 Appendix C](https://www.rfc-editor.org/rfc/rfc9562#appendix-C)):
+Predefined namespace UUIDs for use with `NewV5` ([RFC 9562 Appendix C](https://www.rfc-editor.org/rfc/rfc9562#appendix-C)):
 
 ```go
 uuid.NamespaceDNS   // 6ba7b810-9dad-11d1-80b4-00c04fd430c8

@@ -1,7 +1,6 @@
 package uuid
 
 import (
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
 	"hash"
@@ -9,14 +8,9 @@ import (
 	"time"
 )
 
-// Pre-initialized hash states with namespace bytes already written.
+// Pre-initialized SHA-1 hash states with namespace bytes already written.
 // Cloned per call via hash.Cloner to avoid re-hashing the 16-byte namespace.
 var (
-	md5DNS  hash.Cloner
-	md5URL  hash.Cloner
-	md5OID  hash.Cloner
-	md5X500 hash.Cloner
-
 	sha1DNS  hash.Cloner
 	sha1URL  hash.Cloner
 	sha1OID  hash.Cloner
@@ -24,11 +18,6 @@ var (
 )
 
 func init() {
-	md5DNS = initHash(md5.New(), NamespaceDNS)
-	md5URL = initHash(md5.New(), NamespaceURL)
-	md5OID = initHash(md5.New(), NamespaceOID)
-	md5X500 = initHash(md5.New(), NamespaceX500)
-
 	sha1DNS = initHash(sha1.New(), NamespaceDNS)
 	sha1URL = initHash(sha1.New(), NamespaceURL)
 	sha1OID = initHash(sha1.New(), NamespaceOID)
@@ -50,36 +39,26 @@ func NewV4() UUID {
 	return u
 }
 
-// NewV3 returns a deterministic Version 3 (MD5) UUID for the given namespace and name.
-func NewV3(namespace UUID, name string) UUID {
-	return hashUUID(namespace, name, V3, md5.New, md5DNS, md5URL, md5OID, md5X500)
-}
-
 // NewV5 returns a deterministic Version 5 (SHA-1) UUID for the given namespace and name.
 func NewV5(namespace UUID, name string) UUID {
-	return hashUUID(namespace, name, V5, sha1.New, sha1DNS, sha1URL, sha1OID, sha1X500)
-}
-
-// hashUUID generates a V3 or V5 UUID using the specified hash.
-func hashUUID(namespace UUID, name string, ver Version, newHash func() hash.Hash, dns, url, oid, x500 hash.Cloner) UUID {
 	var h hash.Hash
 
 	// Use pre-cloned hash state for standard namespaces
 	switch namespace {
 	case NamespaceDNS:
-		c, _ := dns.Clone()
+		c, _ := sha1DNS.Clone()
 		h = c
 	case NamespaceURL:
-		c, _ := url.Clone()
+		c, _ := sha1URL.Clone()
 		h = c
 	case NamespaceOID:
-		c, _ := oid.Clone()
+		c, _ := sha1OID.Clone()
 		h = c
 	case NamespaceX500:
-		c, _ := x500.Clone()
+		c, _ := sha1X500.Clone()
 		h = c
 	default:
-		h = newHash()
+		h = sha1.New()
 		h.Write(namespace[:])
 	}
 
@@ -88,8 +67,8 @@ func hashUUID(namespace UUID, name string, ver Version, newHash func() hash.Hash
 
 	var u UUID
 	copy(u[:], sum[:16])
-	u[6] = (u[6] & 0x0f) | (byte(ver) << 4) // version
-	u[8] = (u[8] & 0x3f) | 0x80             // variant RFC 9562
+	u[6] = (u[6] & 0x0f) | 0x50 // version 5
+	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
 	return u
 }
 

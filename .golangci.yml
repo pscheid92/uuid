@@ -28,9 +28,9 @@ linters:
 
   exclusions:
     rules:
-      # MD5 and SHA-1 are required by RFC 9562 for V3/V5 UUIDs, not used for security.
+      # SHA-1 is required by RFC 9562 for V5 UUIDs, not used for security.
       - linters: [gosec]
-        rules: [G401, G501, G505]
+        rules: [G505]
         path: generate\.go
 
   settings:
