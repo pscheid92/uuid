@@ -75,7 +75,11 @@ func NewV5(namespace UUID, name string) UUID {
 // NewV4Batch returns n random (Version 4) UUIDs.
 // It amortizes the cost of crypto/rand by reading all random bytes in a
 // single call, making it significantly faster than calling [NewV4] in a loop.
+// It returns nil if n <= 0.
 func NewV4Batch(n int) []UUID {
+	if n <= 0 {
+		return nil
+	}
 	uuids := make([]UUID, n)
 	buf := make([]byte, n*16)
 	_, _ = rand.Read(buf)
@@ -271,8 +275,11 @@ func (g *Generator) NewV7() UUID {
 // NewV7Batch returns n Version 7 UUIDs that are monotonically increasing.
 // It amortizes the cost of crypto/rand and [time.Now] by performing a single
 // call of each, making it significantly faster than calling [Generator.NewV7]
-// in a loop.
+// in a loop. It returns nil if n <= 0.
 func (g *Generator) NewV7Batch(n int) []UUID {
+	if n <= 0 {
+		return nil
+	}
 	uuids := make([]UUID, n)
 
 	// One bulk random read for all rand_b fields.
