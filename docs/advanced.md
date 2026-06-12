@@ -44,11 +44,11 @@ See [Internals: Pool](internals.md#pool-amortizing-cryptorand) for how pooling w
 ```go
 id := uuid.NewV7()
 
-id.Version()  // uuid.Version7
+id.Version()  // uuid.V7
 id.Variant()  // uuid.VariantRFC9562
 id.IsNil()    // false
 id.Time()     // time.Time (millisecond precision, V7 only)
-id.Bytes()    // [16]byte
+id.Bytes()    // []byte copy of the 16 raw bytes
 ```
 
 `Compare(a, b UUID) int` returns -1, 0, or +1 for use with `slices.SortFunc`:
