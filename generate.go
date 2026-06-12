@@ -95,6 +95,11 @@ func NewV4Batch(n int) []UUID {
 // in bulk. It provides high-throughput [Pool.NewV4] and [Pool.NewV7] methods
 // that are functionally equivalent to the package-level functions.
 // Multiple goroutines may safely call methods concurrently.
+//
+// Because Pool buffers pre-generated randomness in process memory, it is
+// not fork-safe: a forked process or a cloned/restored VM snapshot can
+// duplicate the buffer, causing both copies to emit identical UUIDs.
+// Use the package-level functions where fork or VM-clone safety matters.
 type Pool struct {
 	mu sync.Mutex
 

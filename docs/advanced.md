@@ -35,7 +35,7 @@ gen := uuid.NewGenerator()
 ids  = gen.NewV7Batch(1000)  // ~15x faster, all monotonically increasing
 ```
 
-Both `Pool` and `Batch` use `crypto/rand` exclusively - no security trade-offs. `Pool` is safe for concurrent use.
+Both `Pool` and `Batch` draw exclusively from `crypto/rand`, and `Pool` is safe for concurrent use. One caveat: `Pool` buffers pre-generated randomness in process memory, so it is not fork-safe — a forked process or a cloned/restored VM snapshot duplicates the buffer and can emit identical UUIDs from both copies. Use the package-level functions where that matters. The batch APIs are unaffected since they read fresh randomness on every call.
 
 See [Internals: Pool](internals.md#pool-amortizing-cryptorand) for how pooling works.
 
