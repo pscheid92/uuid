@@ -157,7 +157,8 @@ func (p *Pool) NewV4() UUID {
 // NewV7 returns a new Version 7 UUID from the pool.
 // It is functionally equivalent to [Generator.NewV7] but amortizes
 // the crypto/rand overhead by buffering random bytes for the rand_b field.
-// Timestamps are computed live to remain accurate.
+// Timestamps are computed live to remain accurate, though under sustained
+// bursts they may run slightly ahead of the wall clock (see [Generator.NewV7]).
 func (p *Pool) NewV7() UUID {
 	p.mu.Lock()
 	if p.v7pos >= poolSize {
@@ -239,7 +240,9 @@ const nanoPerMilli = 1_000_000
 //
 // When multiple UUIDs are generated faster than the clock resolution,
 // the combined timestamp+seq counter is incremented to guarantee
-// monotonicity within this Generator.
+// monotonicity within this Generator. Counter increments can carry into
+// the millisecond field, so under sustained bursts the encoded timestamp
+// (and thus [UUID.Time]) may run slightly ahead of the wall clock.
 func (g *Generator) NewV7() UUID {
 	var u UUID
 	_, _ = rand.Read(u[8:])
@@ -281,6 +284,10 @@ func (g *Generator) NewV7() UUID {
 // It amortizes the cost of crypto/rand and [time.Now] by performing a single
 // call of each, making it significantly faster than calling [Generator.NewV7]
 // in a loop. It returns nil if n <= 0.
+//
+// All n UUIDs derive from one clock reading: consecutive counter values can
+// carry into the millisecond field, so for large n the encoded timestamps
+// may run slightly ahead of the wall clock.
 func (g *Generator) NewV7Batch(n int) []UUID {
 	if n <= 0 {
 		return nil
