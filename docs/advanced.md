@@ -30,10 +30,10 @@ For bulk workloads (database seeding, ETL, load testing), batch APIs generate ma
 
 ```go
 ids := uuid.NewV4Batch(1000) // ~25x faster than calling NewV4() in a loop
-
-gen := uuid.NewGenerator()
-ids  = gen.NewV7Batch(1000)  // ~15x faster, all monotonically increasing
+ids  = uuid.NewV7Batch(1000) // ~15x faster, all monotonically increasing
 ```
+
+`uuid.NewV7Batch` uses the package-level default generator; call `NewV7Batch` on a dedicated `Generator` for isolated monotonicity guarantees.
 
 Both `Pool` and `Batch` draw exclusively from `crypto/rand`, and `Pool` is safe for concurrent use. One caveat: `Pool` buffers pre-generated randomness in process memory, so it is not fork-safe — a forked process or a cloned/restored VM snapshot duplicates the buffer and can emit identical UUIDs from both copies. Use the package-level functions where that matters. The batch APIs are unaffected since they read fresh randomness on every call.
 

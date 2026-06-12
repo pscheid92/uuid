@@ -409,6 +409,22 @@ func TestNewV7PackageLevelUsesDefault(t *testing.T) {
 	}
 }
 
+func TestNewV7BatchPackageLevel(t *testing.T) {
+	uuids := NewV7Batch(10)
+	if len(uuids) != 10 {
+		t.Fatalf("NewV7Batch(10) returned %d UUIDs", len(uuids))
+	}
+	if !slices.IsSortedFunc(uuids, Compare) {
+		t.Errorf("package-level NewV7Batch should be monotonically increasing")
+	}
+	// Shares the default generator with NewV7: a subsequent single UUID
+	// must sort after the batch.
+	single := NewV7()
+	if Compare(single, uuids[len(uuids)-1]) <= 0 {
+		t.Errorf("NewV7() after batch should sort after it: %s <= %s", single, uuids[len(uuids)-1])
+	}
+}
+
 func TestNewV7ConcurrentSafety(t *testing.T) {
 	gen := NewGenerator()
 	const n = 100

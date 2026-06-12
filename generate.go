@@ -217,6 +217,12 @@ func NewV7() UUID {
 	return defaultGen.NewV7()
 }
 
+// NewV7Batch returns n monotonically increasing Version 7 UUIDs using the
+// package-level default generator. See [Generator.NewV7Batch].
+func NewV7Batch(n int) []UUID {
+	return defaultGen.NewV7Batch(n)
+}
+
 // Generator produces Version 7 UUIDs with per-instance monotonicity.
 // Multiple goroutines may safely call NewV7 concurrently on the same Generator.
 type Generator struct {

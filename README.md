@@ -28,7 +28,7 @@ fmt.Println(id.String())                                  // "550e8400-e29b-41d4
 |---------|-------------|----------|
 | V4 | Random | `NewV4()` / `Pool.NewV4()` / `NewV4Batch(n)` |
 | V5 | Deterministic (SHA-1) | `NewV5(namespace, name)` |
-| V7 | Timestamp + random | `NewV7()` / `Pool.NewV7()` / `Generator.NewV7Batch(n)` |
+| V7 | Timestamp + random | `NewV7()` / `Pool.NewV7()` / `NewV7Batch(n)` |
 | V8 | Custom data | `NewV8(data)` |
 
 ## Usage
