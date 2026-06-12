@@ -133,13 +133,18 @@ func grow(b []byte, n int) []byte {
 }
 
 // Scan implements [database/sql.Scanner]. It supports scanning from:
-//   - string: parsed with [ParseLenient]
+//   - string: 16 raw bytes (e.g. a BINARY(16) column delivered as string)
+//     or text form parsed with [ParseLenient]
 //   - []byte: 16 raw bytes or text form parsed with [ParseLenient]
 //
-// For SQL NULL handling, use *UUID (nil pointer = NULL).
+// Scanning SQL NULL is an error; use *UUID (nil pointer = NULL) instead.
 func (u *UUID) Scan(src any) error {
 	switch v := src.(type) {
 	case string:
+		if len(v) == 16 {
+			copy(u[:], v)
+			return nil
+		}
 		parsed, err := ParseLenient(v)
 		if err != nil {
 			return err
@@ -158,6 +163,9 @@ func (u *UUID) Scan(src any) error {
 		}
 		*u = parsed
 		return nil
+
+	case nil:
+		return fmt.Errorf("uuid: cannot scan NULL into UUID; use *UUID for nullable columns")
 
 	default:
 		return fmt.Errorf("uuid: cannot scan %T into UUID", src)

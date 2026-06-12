@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -278,6 +279,29 @@ func TestScanBytesText(t *testing.T) {
 	want := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 	if u != want {
 		t.Errorf("Scan([]byte text) = %v, want %v", u, want)
+	}
+}
+
+func TestScanString16RawBytes(t *testing.T) {
+	want := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	raw := string(want.Bytes()) // e.g. a BINARY(16) column delivered as string
+	var u UUID
+	if err := u.Scan(raw); err != nil {
+		t.Fatalf("Scan(16-byte string) error: %v", err)
+	}
+	if u != want {
+		t.Errorf("Scan(16-byte string) = %v, want %v", u, want)
+	}
+}
+
+func TestScanNil(t *testing.T) {
+	var u UUID
+	err := u.Scan(nil)
+	if err == nil {
+		t.Fatal("Scan(nil) should return error")
+	}
+	if !strings.Contains(err.Error(), "*UUID") {
+		t.Errorf("Scan(nil) error should hint at *UUID, got: %v", err)
 	}
 }
 
