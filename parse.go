@@ -1,6 +1,9 @@
 package uuid
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // xvalues maps hex character bytes to their values; 0xff marks invalid.
 var xvalues = [256]byte{
@@ -72,7 +75,8 @@ func ParseLenient(s string) (UUID, error) {
 		return parseHex(s, 0)
 
 	case 45: // urn:uuid:
-		if s[:9] != "urn:uuid:" {
+		// The urn scheme and uuid namespace are case-insensitive (RFC 8141).
+		if !strings.EqualFold(s[:9], "urn:uuid:") {
 			return Nil, &ParseError{Input: s, Msg: "expected urn:uuid: prefix"}
 		}
 		return parseHex(s, 9)

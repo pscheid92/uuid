@@ -102,6 +102,7 @@ func TestParseLenient(t *testing.T) {
 	}{
 		{"standard", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
 		{"URN", "urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+		{"URN upper prefix", "URN:UUID:6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
 		{"braced", "{6ba7b810-9dad-11d1-80b4-00c04fd430c8}"},
 		{"compact", "6ba7b8109dad11d180b400c04fd430c8"},
 		{"compact upper", "6BA7B8109DAD11D180B400C04FD430C8"},
