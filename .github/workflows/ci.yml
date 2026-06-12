@@ -22,6 +22,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Vet (bench module)
+        run: cd bench && go vet ./...
+
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
 
@@ -52,6 +55,18 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   bench:
     runs-on: ubuntu-latest
