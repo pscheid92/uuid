@@ -50,7 +50,7 @@ func (u UUID) MarshalText() ([]byte, error) {
 // It implements [encoding.TextUnmarshaler].
 func (u *UUID) UnmarshalText(data []byte) error {
 	if len(data) != 36 {
-		return &ParseError{Input: string(data), Msg: "expected 36-character hyphenated format"}
+		return &ParseError{Input: errInputBytes(data), Msg: "expected 36-character hyphenated format"}
 	}
 	if data[8] != '-' || data[13] != '-' || data[18] != '-' || data[23] != '-' {
 		return &ParseError{Input: string(data), Msg: "expected hyphens at positions 8, 13, 18, 23"}

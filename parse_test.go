@@ -83,6 +83,27 @@ func TestParseErrorMessage(t *testing.T) {
 	}
 }
 
+func TestParseErrorInputTruncated(t *testing.T) {
+	long := strings.Repeat("a", 1000)
+
+	for name, parse := range map[string]func(string) (UUID, error){
+		"Parse":        Parse,
+		"ParseLenient": ParseLenient,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parse(long)
+			perr, ok := errors.AsType[*ParseError](err)
+			if !ok {
+				t.Fatalf("error type = %T, want *ParseError", err)
+			}
+			want := long[:64] + "..."
+			if perr.Input != want {
+				t.Errorf("ParseError.Input = %q (len %d), want %q", perr.Input, len(perr.Input), want)
+			}
+		})
+	}
+}
+
 func TestLengthErrorMessage(t *testing.T) {
 	_, err := FromBytes([]byte{1, 2})
 	msg := err.Error()

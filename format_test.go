@@ -1,6 +1,7 @@
 package uuid
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -96,6 +97,20 @@ func TestUnmarshalTextError(t *testing.T) {
 	err := u.UnmarshalText([]byte("invalid"))
 	if err == nil {
 		t.Fatal("UnmarshalText should fail on invalid input")
+	}
+}
+
+func TestUnmarshalTextInputTruncated(t *testing.T) {
+	long := bytes.Repeat([]byte("a"), 1000)
+	var u UUID
+	err := u.UnmarshalText(long)
+	perr, ok := errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	want := string(long[:64]) + "..."
+	if perr.Input != want {
+		t.Errorf("ParseError.Input = %q (len %d), want %q", perr.Input, len(perr.Input), want)
 	}
 }
 
