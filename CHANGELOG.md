@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-10
+
+### Security
+
+- `Pool` zero value is now safe to use. Previously `var p uuid.Pool` handed out Nil UUIDs (V4) and UUIDs with an all-zero, predictable `rand_b` field (V7) for the first 256 calls; only `NewPool()` armed the refill. If you construct pools without `NewPool`, upgrade.
+
 ### Changed
 
-- `Pool` zero value is now ready to use; previously `var p uuid.Pool` handed out Nil UUIDs (V4) and all-zero `rand_b` (V7) for the first 256 calls
 - `NewV5` is zero-alloc for names up to 240 bytes (was 4 allocs) and ~40% faster; `hash.Cloner` pre-hashing removed
 - `NewV4Batch` fills the result directly from `crypto/rand` (1 alloc instead of 2)
 - `Version.String` names legacy versions V1, V2, V3, and V6 instead of returning "unknown"
@@ -74,7 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-alloc hot paths for NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, MarshalText, UnmarshalText
 - 100% test coverage including fuzz tests
 
-[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pscheid92/uuid/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pscheid92/uuid/releases/tag/v0.3.0
 [0.2.0]: https://github.com/pscheid92/uuid/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pscheid92/uuid/releases/tag/v0.1.0
