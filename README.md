@@ -124,13 +124,14 @@ All generation and formatting hot paths are zero-alloc. Compared to [google/uuid
 | NewV4 | **247 ns** | 291 ns | 274 ns |
 | NewV4 (Pool) | **17 ns** | - | - |
 | NewV4Batch(100) | **1,025 ns** | 25,483 ns | 24,768 ns |
+| NewV5 | **70 ns** | 133 ns | 67 ns |
 | NewV7 | **106 ns** | 309 ns | 130 ns |
 | NewV7 (Pool) | **50 ns** | - | - |
 | NewV7Batch(100) | **800 ns** | 30,285 ns | 12,410 ns |
 | Parse | **23 ns** | 21 ns | 27 ns |
 | MarshalText | **11 ns** | 18 ns | 27 ns |
 
-All entries for this library are zero-alloc; other libraries allocate 1 per operation (generation) or 1 per call (formatting). Run the comparison benchmarks yourself:
+All entries for this library are zero-alloc. google/uuid allocates on every call; gofrs/uuid allocates on every call except NewV5. Run the comparison benchmarks yourself:
 
 ```bash
 cd bench && go test -bench=. -benchmem ./...
