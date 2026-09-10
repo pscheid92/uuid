@@ -346,7 +346,7 @@ func TestNewV7TimestampAdvances(t *testing.T) {
 		a := gen.NewV7()
 
 		// Advance fake clock by 100ms
-		time.Sleep(100 * time.Millisecond)
+		synctest.Sleep(100 * time.Millisecond)
 
 		b := gen.NewV7()
 		if Compare(b, a) <= 0 {
