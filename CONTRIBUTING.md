@@ -4,7 +4,7 @@ Thank you for considering contributing to this project!
 
 ## Requirements
 
-- **Go 1.26+**: this library uses features from Go 1.24 through 1.26
+- **Go 1.27+**: this library uses features from Go 1.24 through 1.26 and targets the current stable release
 - **Zero external dependencies**: only the Go standard library is allowed
 - **100% test coverage**: verify with:
   ```bash
