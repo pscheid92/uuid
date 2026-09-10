@@ -183,7 +183,11 @@ func TestVersionString(t *testing.T) {
 		{V7, "V7"},
 		{V8, "V8"},
 		{VMax, "MAX"},
-		{Version(2), "unknown"},
+		{Version(1), "V1"},
+		{Version(2), "V2"},
+		{Version(3), "V3"},
+		{Version(6), "V6"},
+		{Version(9), "unknown"},
 	}
 	for _, tt := range tests {
 		if got := tt.v.String(); got != tt.want {

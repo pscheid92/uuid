@@ -81,15 +81,25 @@ const (
 	VMax Version = 15
 )
 
-// String returns the version name.
+// String returns the version name. Legacy versions (V1, V2, V3, V6) are
+// named even though this package does not generate them, since [Parse]
+// accepts UUIDs of any version.
 func (v Version) String() string {
 	switch v {
 	case VNil:
 		return "NIL"
+	case 1:
+		return "V1"
+	case 2:
+		return "V2"
+	case 3:
+		return "V3"
 	case V4:
 		return "V4"
 	case V5:
 		return "V5"
+	case 6:
+		return "V6"
 	case V7:
 		return "V7"
 	case V8:
