@@ -3,31 +3,11 @@ package uuid
 import (
 	"crypto/rand"
 	"crypto/sha1"
-	"hash"
+	"io"
 	"sync"
 	"time"
+	"unsafe"
 )
-
-// Pre-initialized SHA-1 hash states with namespace bytes already written.
-// Cloned per call via hash.Cloner to avoid re-hashing the 16-byte namespace.
-var (
-	sha1DNS  hash.Cloner
-	sha1URL  hash.Cloner
-	sha1OID  hash.Cloner
-	sha1X500 hash.Cloner
-)
-
-func init() {
-	sha1DNS = initHash(sha1.New(), NamespaceDNS)
-	sha1URL = initHash(sha1.New(), NamespaceURL)
-	sha1OID = initHash(sha1.New(), NamespaceOID)
-	sha1X500 = initHash(sha1.New(), NamespaceX500)
-}
-
-func initHash(h hash.Hash, ns UUID) hash.Cloner {
-	h.Write(ns[:])
-	return h.(hash.Cloner)
-}
 
 // NewV4 returns a new random (Version 4) UUID.
 // It reads from crypto/rand which cannot fail on Go 1.26+.
@@ -39,31 +19,27 @@ func NewV4() UUID {
 	return u
 }
 
+// v5StackBuf is the size of the stack buffer used to hash namespace||name
+// in NewV5 without allocating. Names longer than v5StackBuf-16 bytes fall
+// back to a streaming hash.
+const v5StackBuf = 256
+
 // NewV5 returns a deterministic Version 5 (SHA-1) UUID for the given namespace and name.
+// It allocates nothing for names up to 240 bytes.
 func NewV5(namespace UUID, name string) UUID {
-	var h hash.Hash
-
-	// Use pre-cloned hash state for standard namespaces
-	switch namespace {
-	case NamespaceDNS:
-		c, _ := sha1DNS.Clone()
-		h = c
-	case NamespaceURL:
-		c, _ := sha1URL.Clone()
-		h = c
-	case NamespaceOID:
-		c, _ := sha1OID.Clone()
-		h = c
-	case NamespaceX500:
-		c, _ := sha1X500.Clone()
-		h = c
-	default:
-		h = sha1.New()
+	var sum [sha1.Size]byte
+	if len(name) <= v5StackBuf-len(namespace) {
+		// Hash namespace||name from a stack buffer in one call.
+		var buf [v5StackBuf]byte
+		copy(buf[:], namespace[:])
+		n := copy(buf[len(namespace):], name)
+		sum = sha1.Sum(buf[:len(namespace)+n])
+	} else {
+		h := sha1.New()
 		h.Write(namespace[:])
+		_, _ = io.WriteString(h, name)
+		h.Sum(sum[:0])
 	}
-
-	h.Write([]byte(name))
-	sum := h.Sum(nil)
 
 	var u UUID
 	copy(u[:], sum[:16])
@@ -81,14 +57,20 @@ func NewV4Batch(n int) []UUID {
 		return nil
 	}
 	uuids := make([]UUID, n)
-	buf := make([]byte, n*16)
-	_, _ = rand.Read(buf)
+	_, _ = rand.Read(rawBytes(uuids))
 	for i := range n {
-		copy(uuids[i][:], buf[i*16:])
 		uuids[i][6] = (uuids[i][6] & 0x0f) | 0x40 // version 4
 		uuids[i][8] = (uuids[i][8] & 0x3f) | 0x80 // variant RFC 9562
 	}
 	return uuids
+}
+
+// rawBytes returns the contiguous backing memory of a non-empty UUID slice
+// as a byte slice, so crypto/rand can fill it directly without an
+// intermediate buffer. A []UUID is a contiguous array of [16]byte, so the
+// resulting slice covers exactly len(uuids)*16 bytes of valid memory.
+func rawBytes(uuids []UUID) []byte {
+	return unsafe.Slice(&uuids[0][0], len(uuids)*16)
 }
 
 // Pool amortizes the cost of crypto/rand by pre-generating random bytes
@@ -100,17 +82,19 @@ func NewV4Batch(n int) []UUID {
 // not fork-safe: a forked process or a cloned/restored VM snapshot can
 // duplicate the buffer, causing both copies to emit identical UUIDs.
 // Use the package-level functions where fork or VM-clone safety matters.
+//
+// The zero value is ready to use; [NewPool] is equivalent to &Pool{}.
 type Pool struct {
 	mu sync.Mutex
 
 	// V4: fully pre-stamped UUIDs ready to hand out.
-	v4buf [poolSize]UUID
-	v4pos int
+	v4buf  [poolSize]UUID
+	v4left int // UUIDs remaining in v4buf; zero triggers a refill
 
 	// V7: pre-generated random bytes for rand_b (bytes 8–15).
 	// Timestamp + monotonic sequence are computed live per call.
 	v7rand [poolSize * 8]byte
-	v7pos  int
+	v7left int   // 8-byte chunks remaining in v7rand; zero triggers a refill
 	v7seq  int64 // ms<<12 | seq for V7 monotonicity
 }
 
@@ -118,26 +102,21 @@ const poolSize = 256
 
 // NewPool returns a new [Pool] that amortizes crypto/rand overhead.
 func NewPool() *Pool {
-	return &Pool{
-		v4pos: poolSize, // trigger refill on first V4 call
-		v7pos: poolSize, // trigger refill on first V7 call
-	}
+	return &Pool{}
 }
 
 func (p *Pool) refillV4() {
-	var raw [poolSize * 16]byte
-	_, _ = rand.Read(raw[:])
+	_, _ = rand.Read(rawBytes(p.v4buf[:]))
 	for i := range poolSize {
-		copy(p.v4buf[i][:], raw[i*16:])
 		p.v4buf[i][6] = (p.v4buf[i][6] & 0x0f) | 0x40 // version 4
 		p.v4buf[i][8] = (p.v4buf[i][8] & 0x3f) | 0x80 // variant RFC 9562
 	}
-	p.v4pos = 0
+	p.v4left = poolSize
 }
 
 func (p *Pool) refillV7() {
 	_, _ = rand.Read(p.v7rand[:])
-	p.v7pos = 0
+	p.v7left = poolSize
 }
 
 // NewV4 returns a new random (Version 4) UUID from the pool.
@@ -145,11 +124,11 @@ func (p *Pool) refillV7() {
 // amortizes the crypto/rand overhead across pool refills.
 func (p *Pool) NewV4() UUID {
 	p.mu.Lock()
-	if p.v4pos >= poolSize {
+	if p.v4left == 0 {
 		p.refillV4()
 	}
-	u := p.v4buf[p.v4pos]
-	p.v4pos++
+	u := p.v4buf[poolSize-p.v4left]
+	p.v4left--
 	p.mu.Unlock()
 	return u
 }
@@ -161,14 +140,14 @@ func (p *Pool) NewV4() UUID {
 // bursts they may run slightly ahead of the wall clock (see [Generator.NewV7]).
 func (p *Pool) NewV7() UUID {
 	p.mu.Lock()
-	if p.v7pos >= poolSize {
+	if p.v7left == 0 {
 		p.refillV7()
 	}
 
 	var u UUID
-	off := p.v7pos * 8
+	off := (poolSize - p.v7left) * 8
 	copy(u[8:], p.v7rand[off:off+8])
-	p.v7pos++
+	p.v7left--
 
 	now := time.Now()
 	nano := now.UnixNano()
@@ -300,7 +279,9 @@ func (g *Generator) NewV7Batch(n int) []UUID {
 	}
 	uuids := make([]UUID, n)
 
-	// One bulk random read for all rand_b fields.
+	// One bulk random read for all rand_b fields. Reading only the 8
+	// random bytes per UUID into a side buffer is faster than filling the
+	// whole result and overwriting bytes 0–7.
 	randBuf := make([]byte, n*8)
 	_, _ = rand.Read(randBuf)
 

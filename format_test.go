@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -385,5 +386,35 @@ func TestScanValueRoundTrip(t *testing.T) {
 	}
 	if decoded != original {
 		t.Errorf("round-trip failed: %v != %v", decoded, original)
+	}
+}
+
+func TestJSONv2RoundTrip(t *testing.T) {
+	type doc struct {
+		ID     UUID  `json:"id"`
+		Parent *UUID `json:"parent"`
+	}
+	want := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+	b, err := jsonv2.Marshal(doc{ID: want})
+	if err != nil {
+		t.Fatalf("jsonv2.Marshal error: %v", err)
+	}
+	const wantJSON = `{"id":"6ba7b810-9dad-11d1-80b4-00c04fd430c8","parent":null}`
+	if string(b) != wantJSON {
+		t.Errorf("jsonv2.Marshal = %s, want %s", b, wantJSON)
+	}
+
+	var got doc
+	if err := jsonv2.Unmarshal(b, &got); err != nil {
+		t.Fatalf("jsonv2.Unmarshal error: %v", err)
+	}
+	if got.ID != want || got.Parent != nil {
+		t.Errorf("jsonv2 round-trip = %+v, want ID %s and nil Parent", got, want)
+	}
+
+	err = jsonv2.Unmarshal([]byte(`{"id":"not-a-uuid"}`), &got)
+	if _, ok := errors.AsType[*ParseError](err); !ok {
+		t.Errorf("jsonv2.Unmarshal invalid: error = %T (%v), want *ParseError", err, err)
 	}
 }

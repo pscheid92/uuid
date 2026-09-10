@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: go.mod
 
       - name: Vet
         run: go vet ./...
@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: go.mod
 
       - uses: golangci/golangci-lint-action@v9
         with:
@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: go.mod
 
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -75,7 +75,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: go.mod
 
       - name: Benchmarks (root)
         run: go test -bench=. -benchmem -count=1 -benchtime=1s ./...

@@ -1,7 +1,9 @@
 package uuid
 
 import (
+	"crypto/sha1"
 	"slices"
+	"strings"
 	"testing"
 	"testing/cryptotest"
 	"testing/synctest"
@@ -112,6 +114,29 @@ func TestPoolNewV4(t *testing.T) {
 			t.Fatalf("duplicate UUID from pool: %s", u)
 		}
 		seen[u] = true
+	}
+}
+
+func TestPoolZeroValue(t *testing.T) {
+	var p Pool
+	for i := range 3 {
+		u := p.NewV4()
+		if u.IsNil() {
+			t.Fatalf("zero-value Pool.NewV4() #%d returned Nil", i)
+		}
+		if u.Version() != V4 || u.Variant() != VariantRFC9562 {
+			t.Fatalf("zero-value Pool.NewV4() #%d = %s, bad version/variant", i, u)
+		}
+	}
+	for i := range 3 {
+		u := p.NewV7()
+		if u.Version() != V7 || u.Variant() != VariantRFC9562 {
+			t.Fatalf("zero-value Pool.NewV7() #%d = %s, bad version/variant", i, u)
+		}
+		var zero [7]byte
+		if [7]byte(u[9:16]) == zero {
+			t.Fatalf("zero-value Pool.NewV7() #%d has all-zero rand_b: %s", i, u)
+		}
 	}
 }
 
@@ -230,6 +255,39 @@ func TestNewV5AllNamespaces(t *testing.T) {
 				t.Errorf("Variant = %v, want RFC9562", u.Variant())
 			}
 		})
+	}
+}
+
+// refV5 computes a V5 UUID straight from the RFC 9562 definition
+// (SHA-1 of namespace||name) using the streaming hash API.
+func refV5(ns UUID, name string) UUID {
+	h := sha1.New()
+	h.Write(ns[:])
+	h.Write([]byte(name))
+	var u UUID
+	copy(u[:], h.Sum(nil))
+	u[6] = (u[6] & 0x0f) | 0x50
+	u[8] = (u[8] & 0x3f) | 0x80
+	return u
+}
+
+func TestNewV5NameLengths(t *testing.T) {
+	// Names up to v5StackBuf-16 bytes use the stack buffer; longer names
+	// take the streaming path. Both must agree with the RFC definition.
+	for _, n := range []int{0, 1, 15, v5StackBuf - 17, v5StackBuf - 16, v5StackBuf - 15, 1000} {
+		name := strings.Repeat("x", n)
+		if got, want := NewV5(NamespaceDNS, name), refV5(NamespaceDNS, name); got != want {
+			t.Errorf("NewV5(len %d) = %s, want %s", n, got, want)
+		}
+	}
+}
+
+func TestNewV5ZeroAlloc(t *testing.T) {
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = NewV5(NamespaceDNS, "www.example.com")
+	})
+	if allocs != 0 {
+		t.Errorf("NewV5 allocs = %v, want 0", allocs)
 	}
 }
 

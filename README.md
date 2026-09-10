@@ -102,18 +102,18 @@ slices.SortFunc(ids, uuid.Compare)
 
 Go already has [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](https://github.com/gofrs/uuid). Here's what this one does differently:
 
-- **Zero allocations**: NewV4, NewV7, Parse, MarshalText, and UnmarshalText all allocate nothing. Other libraries allocate at least once per call.
+- **Zero allocations**: NewV4, NewV5, NewV7, Parse, MarshalText, and UnmarshalText all allocate nothing. Other libraries allocate at least once per call.
 - **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~25x faster bulk V4) amortize `crypto/rand` cost. No equivalent exists in other libraries.
 - **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
 - **No global mutable state**: No `SetRand`, no global clock. V4/V5/V8 are pure functions. V7 monotonicity is scoped to a `Generator` instance.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
 - **Simple value type**: `UUID` is `[16]byte`: comparable, copyable, safe as map key. No `NullUUID` - use `*UUID` for nullable SQL/JSON fields.
-- **Modern Go, zero dependencies**: Targets Go 1.27+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `hash.Cloner`. Only stdlib. No legacy baggage, no V1/V2/V3/V6.
+- **Modern Go, zero dependencies**: Targets Go 1.27+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `testing/synctest`. Only stdlib. No legacy baggage, no V1/V2/V3/V6.
 
 ## Further Reading
 
 - **[Advanced Usage](docs/advanced.md)**: V7 monotonicity, high-throughput Pool and Batch APIs, properties, namespace constants.
-- **[Internals](docs/internals.md)**: V7 bit layout, sub-millisecond precision, monotonic counter fallback, Pool amortization, hash.Cloner optimization, parse lookup table.
+- **[Internals](docs/internals.md)**: V7 bit layout, sub-millisecond precision, monotonic counter fallback, Pool amortization, zero-alloc V5 hashing, parse lookup table.
 
 ## Benchmarks
 

@@ -60,11 +60,17 @@ The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >
 
 ## Batch: Bulk Generation
 
-`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~25x (V4) and ~15x (V7) speedups over calling the single-UUID functions in a loop.
+`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~25x (V4) and ~13x (V7) speedups over calling the single-UUID functions in a loop.
 
-## V5: hash.Cloner Optimization
+## V5: Zero-Alloc Hashing
 
-V5 (SHA-1) hashes `namespace || name` to produce deterministic UUIDs. For the four standard namespaces (DNS, URL, OID, X500), the library pre-computes the hash state with the namespace bytes at init time, then uses `hash.Cloner` to clone that state per call - avoiding re-hashing the 16-byte namespace prefix every time.
+V5 (SHA-1) hashes `namespace || name` to produce deterministic UUIDs. For names up to 240 bytes, the library concatenates namespace and name into a 256-byte stack buffer and calls `sha1.Sum` directly, which takes a concrete `[]byte` and returns a `[20]byte` - nothing escapes to the heap, so `NewV5` is zero-alloc. Longer names fall back to the streaming `hash.Hash` API, which allocates because arguments passed through an interface escape.
+
+This replaced an earlier `hash.Cloner` approach that pre-hashed the namespace: since a 16-byte namespace never fills a 64-byte SHA-1 block, cloning saved no compression rounds, and the interface calls cost four allocations per UUID.
+
+## Batch: Filling the Result Directly
+
+`NewV4Batch` lets `crypto/rand` write straight into the `[]UUID` backing array via `unsafe.Slice`, so the only allocation is the result itself. A `[]UUID` is a contiguous array of `[16]byte`, so the reinterpretation is exact. `NewV7Batch` keeps a separate 8-byte-per-UUID buffer for `rand_b`: reading half as many random bytes measured faster than filling all 16 and overwriting the timestamp.
 
 ## Parse: Lookup Table
 
