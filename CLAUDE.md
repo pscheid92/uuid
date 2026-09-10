@@ -1,6 +1,6 @@
 # UUID Library
 
-Modern Go UUID library (RFC 9562) targeting Go 1.26. Module: `github.com/pscheid92/uuid`
+Modern Go UUID library (RFC 9562) targeting Go 1.27. Module: `github.com/pscheid92/uuid`
 
 ## Commands
 
@@ -21,7 +21,7 @@ Single flat package at the module root. Each file has a focused responsibility:
 - `uuid.go` — package doc, UUID type, Nil/Max, Namespace constants, Version/Variant types (VNil/V4/V5/V7/V8/VMax), accessors (Version/Variant/IsNil/Bytes/Time/Compare)
 - `parse.go` — Parse (strict 36-char), ParseLenient (URN/braced/compact), MustParse, FromBytes; hex lookup table + offset array; ParseError, LengthError
 - `format.go` — String, URN, encodeHex, AppendText/Binary, Marshal/Unmarshal (Text + Binary); Scan (database/sql.Scanner), Value (driver.Valuer)
-- `generate.go` — NewV4/V5/V7/V8, NewV4Batch, Generator type with per-instance V7 monotonicity (RFC 9562 Method 3) and NewV7Batch, Pool type with buffered NewV4/NewV7, hash.Cloner setup for V5
+- `generate.go` — NewV4/V5/V7/V8, NewV4Batch, NewV7Batch (package-level, uses default generator), Generator type with per-instance V7 monotonicity (RFC 9562 Method 3) and NewV7Batch, Pool type with buffered NewV4/NewV7, hash.Cloner setup for V5
 - `bench/` — separate Go module with comparison benchmarks against google/uuid and gofrs/uuid
 
 ## Design Principles

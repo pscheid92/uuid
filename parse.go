@@ -1,6 +1,9 @@
 package uuid
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // xvalues maps hex character bytes to their values; 0xff marks invalid.
 var xvalues = [256]byte{
@@ -45,7 +48,7 @@ var hexOffsets = [16]int{
 // For URN, braced, or compact (32-hex) forms, use [ParseLenient].
 func Parse(s string) (UUID, error) {
 	if len(s) != 36 {
-		return Nil, &ParseError{Input: s, Msg: "expected 36-character hyphenated format"}
+		return Nil, &ParseError{Input: errInput(s), Msg: "expected 36-character hyphenated format"}
 	}
 	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
 		return Nil, &ParseError{Input: s, Msg: "expected hyphens at positions 8, 13, 18, 23"}
@@ -72,7 +75,8 @@ func ParseLenient(s string) (UUID, error) {
 		return parseHex(s, 0)
 
 	case 45: // urn:uuid:
-		if s[:9] != "urn:uuid:" {
+		// The urn scheme and uuid namespace are case-insensitive (RFC 8141).
+		if !strings.EqualFold(s[:9], "urn:uuid:") {
 			return Nil, &ParseError{Input: s, Msg: "expected urn:uuid: prefix"}
 		}
 		return parseHex(s, 9)
@@ -87,7 +91,7 @@ func ParseLenient(s string) (UUID, error) {
 		return parseCompact(s)
 
 	default:
-		return Nil, &ParseError{Input: s, Msg: "unrecognized UUID format"}
+		return Nil, &ParseError{Input: errInput(s), Msg: "unrecognized UUID format"}
 	}
 }
 
@@ -154,6 +158,28 @@ func parseHexBytes(u *UUID, b []byte, offset int) bool {
 	return true
 }
 
+// maxErrInputLen bounds how much of a failed input is retained in a
+// ParseError, so that arbitrarily large inputs are not copied into error
+// messages and logs.
+const maxErrInputLen = 64
+
+// errInput returns s truncated to maxErrInputLen bytes for inclusion in a ParseError.
+func errInput(s string) string {
+	if len(s) > maxErrInputLen {
+		return s[:maxErrInputLen] + "..."
+	}
+	return s
+}
+
+// errInputBytes is errInput for []byte, truncating before the string
+// conversion to avoid copying large inputs.
+func errInputBytes(b []byte) string {
+	if len(b) > maxErrInputLen {
+		return string(b[:maxErrInputLen]) + "..."
+	}
+	return string(b)
+}
+
 // ParseError is returned when a UUID string cannot be parsed.
 //
 // Use [errors.AsType] to check for this error:
@@ -162,7 +188,7 @@ func parseHexBytes(u *UUID, b []byte, offset int) bool {
 //	    fmt.Println(perr.Input)
 //	}
 type ParseError struct {
-	Input string // the string that failed to parse
+	Input string // the string that failed to parse, truncated to 64 bytes if longer
 	Msg   string // description of the problem
 }
 

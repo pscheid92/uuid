@@ -5,7 +5,7 @@
 
 # uuid
 
-A modern, zero-alloc, zero-dependency Go UUID library implementing [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562). Built for Go 1.26+ with first-class support for V7 timestamp-ordered UUIDs, pooled generation, and batch APIs.
+A modern, zero-alloc, zero-dependency Go UUID library implementing [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562). Built for Go 1.27+ with first-class support for V7 timestamp-ordered UUIDs, pooled generation, and batch APIs.
 
 ```
 go get github.com/pscheid92/uuid
@@ -28,7 +28,7 @@ fmt.Println(id.String())                                  // "550e8400-e29b-41d4
 |---------|-------------|----------|
 | V4 | Random | `NewV4()` / `Pool.NewV4()` / `NewV4Batch(n)` |
 | V5 | Deterministic (SHA-1) | `NewV5(namespace, name)` |
-| V7 | Timestamp + random | `NewV7()` / `Pool.NewV7()` / `Generator.NewV7Batch(n)` |
+| V7 | Timestamp + random | `NewV7()` / `Pool.NewV7()` / `NewV7Batch(n)` |
 | V8 | Custom data | `NewV8(data)` |
 
 ## Usage
@@ -108,7 +108,7 @@ Go already has [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](ht
 - **No global mutable state**: No `SetRand`, no global clock. V4/V5/V8 are pure functions. V7 monotonicity is scoped to a `Generator` instance.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
 - **Simple value type**: `UUID` is `[16]byte`: comparable, copyable, safe as map key. No `NullUUID` - use `*UUID` for nullable SQL/JSON fields.
-- **Modern Go, zero dependencies**: Targets Go 1.26+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `hash.Cloner`. Only stdlib. No legacy baggage, no V1/V2/V3/V6.
+- **Modern Go, zero dependencies**: Targets Go 1.27+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `hash.Cloner`. Only stdlib. No legacy baggage, no V1/V2/V3/V6.
 
 ## Further Reading
 

@@ -98,3 +98,6 @@ fabric.properties
 coverage.out
 *.prof
 
+
+# macOS
+.DS_Store

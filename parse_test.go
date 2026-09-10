@@ -83,6 +83,27 @@ func TestParseErrorMessage(t *testing.T) {
 	}
 }
 
+func TestParseErrorInputTruncated(t *testing.T) {
+	long := strings.Repeat("a", 1000)
+
+	for name, parse := range map[string]func(string) (UUID, error){
+		"Parse":        Parse,
+		"ParseLenient": ParseLenient,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parse(long)
+			perr, ok := errors.AsType[*ParseError](err)
+			if !ok {
+				t.Fatalf("error type = %T, want *ParseError", err)
+			}
+			want := long[:64] + "..."
+			if perr.Input != want {
+				t.Errorf("ParseError.Input = %q (len %d), want %q", perr.Input, len(perr.Input), want)
+			}
+		})
+	}
+}
+
 func TestLengthErrorMessage(t *testing.T) {
 	_, err := FromBytes([]byte{1, 2})
 	msg := err.Error()
@@ -102,6 +123,7 @@ func TestParseLenient(t *testing.T) {
 	}{
 		{"standard", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
 		{"URN", "urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+		{"URN upper prefix", "URN:UUID:6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
 		{"braced", "{6ba7b810-9dad-11d1-80b4-00c04fd430c8}"},
 		{"compact", "6ba7b8109dad11d180b400c04fd430c8"},
 		{"compact upper", "6BA7B8109DAD11D180B400C04FD430C8"},
