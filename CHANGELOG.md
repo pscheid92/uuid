@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-10
+
 ### Added
 
 - Package-level `NewV7Batch(n)` using the default generator, mirroring `NewV4Batch`
@@ -63,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-alloc hot paths for NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, MarshalText, UnmarshalText
 - 100% test coverage including fuzz tests
 
-[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pscheid92/uuid/releases/tag/v0.3.0
 [0.2.0]: https://github.com/pscheid92/uuid/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pscheid92/uuid/releases/tag/v0.1.0
