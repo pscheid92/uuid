@@ -30,7 +30,7 @@ For bulk workloads (database seeding, ETL, load testing), batch APIs generate ma
 
 ```go
 ids := uuid.NewV4Batch(1000) // ~25x faster than calling NewV4() in a loop
-ids  = uuid.NewV7Batch(1000) // ~15x faster, all monotonically increasing
+ids  = uuid.NewV7Batch(1000) // ~13x faster, all monotonically increasing
 ```
 
 `uuid.NewV7Batch` uses the package-level default generator; call `NewV7Batch` on a dedicated `Generator` for isolated monotonicity guarantees.

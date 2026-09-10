@@ -21,7 +21,7 @@ Single flat package at the module root. Each file has a focused responsibility:
 - `uuid.go` — package doc, UUID type, Nil/Max, Namespace constants, Version/Variant types (VNil/V4/V5/V7/V8/VMax), accessors (Version/Variant/IsNil/Bytes/Time/Compare)
 - `parse.go` — Parse (strict 36-char), ParseLenient (URN/braced/compact), MustParse, FromBytes; hex lookup table + offset array; ParseError, LengthError
 - `format.go` — String, URN, encodeHex, AppendText/Binary, Marshal/Unmarshal (Text + Binary); Scan (database/sql.Scanner), Value (driver.Valuer)
-- `generate.go` — NewV4/V5/V7/V8, NewV4Batch, NewV7Batch (package-level, uses default generator), Generator type with per-instance V7 monotonicity (RFC 9562 Method 3) and NewV7Batch, Pool type with buffered NewV4/NewV7, hash.Cloner setup for V5
+- `generate.go` — NewV4/V5/V7/V8, NewV4Batch, NewV7Batch (package-level, uses default generator), Generator type with per-instance V7 monotonicity (RFC 9562 Method 3) and NewV7Batch, Pool type with buffered NewV4/NewV7 (zero value ready to use), stack-buffer SHA-1 for V5
 - `bench/` — separate Go module with comparison benchmarks against google/uuid and gofrs/uuid
 
 ## Design Principles
@@ -30,19 +30,20 @@ Single flat package at the module root. Each file has a focused responsibility:
 - **No NullUUID.** Use `*UUID` pointer for SQL NULL.
 - **Strict parsing by default.** `Parse()` = 36-char hyphenated only. `ParseLenient()` for other forms.
 - **Always crypto/rand.** No SetRand. Pool and Batch amortize cost without changing the CSPRNG source.
-- **Zero-alloc hot paths.** NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, UnmarshalText, AppendText, MarshalText are all zero-alloc.
+- **Zero-alloc hot paths.** NewV4, NewV5 (names ≤ 240 bytes), NewV7, Pool.NewV4, Pool.NewV7, Parse, UnmarshalText, AppendText, MarshalText are all zero-alloc. NewV4Batch allocates once (crypto/rand fills the result directly via unsafe.Slice); NewV7Batch allocates twice (a separate 8-byte-per-UUID rand_b buffer measured faster than filling 16).
 - **Lookup table parsing.** 256-byte hex lookup table + pre-computed offset array; UnmarshalText parses []byte directly.
 - **V7 uses RFC 9562 Method 3.** Sub-millisecond precision in rand_a via `frac * 4096 / 1_000_000`; monotonic counter fallback. Only reads 8 random bytes (rand_b) since bytes 0–7 are deterministic timestamp+sequence.
 - **Pool amortizes crypto/rand.** Pool pre-generates 256 UUIDs (V4) or 256×8 random bytes (V7 rand_b) per refill. V4 pool: ~14x faster. V7 pool: ~2x faster (time.Now dominates). Batch APIs (NewV4Batch, NewV7Batch) amortize similarly for bulk generation (~25x for V4, ~13x for V7 at n=100).
 
-## Go 1.24–1.26 Features Used
+## Go 1.24–1.27 Features Used
 
 - `encoding.TextAppender` / `BinaryAppender` (1.24) — format.go
-- `hash.Cloner` (1.25) — generate.go namespace hash cloning for V5
 - `testing/synctest` (1.25) — generate_test.go fake clock for V7
 - `crypto/rand` infallible (1.26) — NewV4 returns UUID, no error
 - `testing/cryptotest.SetGlobalRandom` (1.26) — deterministic test randomness
 - `errors.AsType[E]()` (1.26) — typed error matching in tests
+- `encoding/json/v2` (1.27) — round-trip test in format_test.go
+- `synctest.Sleep` (1.27) — generate_test.go
 
 ## Supported UUID Versions
 

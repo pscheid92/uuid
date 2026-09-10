@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `Pool` zero value is now ready to use; previously `var p uuid.Pool` handed out Nil UUIDs (V4) and all-zero `rand_b` (V7) for the first 256 calls
+- `NewV5` is zero-alloc for names up to 240 bytes (was 4 allocs) and ~40% faster; `hash.Cloner` pre-hashing removed
+- `NewV4Batch` fills the result directly from `crypto/rand` (1 alloc instead of 2)
+- `Version.String` names legacy versions V1, V2, V3, and V6 instead of returning "unknown"
+- CI reads the Go version from `go.mod` instead of hard-coding it
+- Added `encoding/json/v2` round-trip test
+
 ## [0.3.0] - 2026-09-10
 
 ### Added
