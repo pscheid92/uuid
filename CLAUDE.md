@@ -1,6 +1,6 @@
 # UUID Library
 
-Modern Go UUID library (RFC 9562) targeting Go 1.26. Module: `github.com/pscheid92/uuid`
+Modern Go UUID library (RFC 9562) targeting Go 1.27. Module: `github.com/pscheid92/uuid`
 
 ## Commands
 

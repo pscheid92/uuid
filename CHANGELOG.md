@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `NewV4Batch` and `NewV7Batch` return nil for `n <= 0` instead of panicking on negative counts
+- Minimum Go version raised to 1.27; bench module dependencies updated (gofrs/uuid v5.5.1)
 - `Scan(nil)` returns a dedicated error suggesting `*UUID` for nullable columns
 
 ### Fixed
