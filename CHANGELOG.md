@@ -7,24 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `NewV7At(t time.Time)` builds a V7 UUID whose timestamp fields encode `t`, for backfilling rows that already have a creation time. Pure function: it never touches `Generator` or `Pool` monotonic state. Panics for times outside the 48-bit range, including the zero `time.Time`.
-- `UUID.Value` example and docs section showing a `BinaryUUID` wrapper for BINARY(16) columns (MySQL, MariaDB)
-- Standard library interop: README section, docs, and `ExampleUUID_stdlibInterop` showing the zero-cost `[16]byte` conversion to and from the Go 1.27 `uuid` package
-- The Go 1.27 standard library `uuid` package is included in the comparison benchmarks (`bench/`) and the README table; README positioning is now relative to the standard library
+## [0.5.0] - 2026-09-20
 
 ### Changed
 
-- Zero-alloc tests now cover `NewV4`, `NewV7`, `NewV7At`, `Generator.NewV7`, `Pool.NewV4`, and `Pool.NewV7`; they skip under the race detector, where `crypto/rand.Read` allocates on Linux, and CI runs them separately without it
 - **Breaking:** `UUID.Time()` now returns `(time.Time, bool)`. The boolean is false, and the time is the zero value, for any non-V7 UUID. Previously a V1 or V6 UUID decoded to a plausible but wrong time, and V4 to garbage. Migrate with `t, _ := id.Time()` where the version is already known.
-
 - `Generator.NewV7Batch` now reserves its sequence range under the lock and encodes the UUIDs outside it, so a large batch no longer blocks concurrent `NewV7` callers on the same generator (~2x faster single-UUID generation while a 10k batch runs in parallel)
 - `Compare` uses `bytes.Compare` instead of string conversions (~3x faster)
 - `ParseLenient` hands the hex decoder a 36-byte window instead of an offset, letting the compiler elide bounds checks (~20% faster); `Parse` is unchanged
 - `AppendText` uses `slices.Grow` instead of a private helper
 - `ParseError.Input` truncation no longer splits a multi-byte UTF-8 rune
 - URN and braced `ParseLenient` errors are checked to report the full input
+- Zero-alloc tests now cover `NewV4`, `NewV7`, `NewV7At`, `Generator.NewV7`, `Pool.NewV4`, and `Pool.NewV7`; they skip under the race detector, where `crypto/rand.Read` allocates on Linux, and CI runs them separately without it
+
+### Added
+
+- `NewV7At(t time.Time)` builds a V7 UUID whose timestamp fields encode `t`, for backfilling rows that already have a creation time. Pure function: it never touches `Generator` or `Pool` monotonic state. Panics for times outside the 48-bit range, including the zero `time.Time`.
+- Standard library interop: README section, docs, and `ExampleUUID_stdlibInterop` showing the zero-cost `[16]byte` conversion to and from the Go 1.27 `uuid` package
+- The Go 1.27 standard library `uuid` package is included in the comparison benchmarks (`bench/`) and the README table; README positioning is now relative to the standard library
+- `UUID.Value` example and docs section showing a `BinaryUUID` wrapper for BINARY(16) columns (MySQL, MariaDB)
 - Documented that each `Pool` keeps V7 monotonic state independent of the package-level generator and other pools
 
 ## [0.4.0] - 2026-09-10
@@ -99,7 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-alloc hot paths for NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, MarshalText, UnmarshalText
 - 100% test coverage including fuzz tests
 
-[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/pscheid92/uuid/releases/tag/v0.5.0
 [0.4.0]: https://github.com/pscheid92/uuid/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pscheid92/uuid/releases/tag/v0.3.0
 [0.2.0]: https://github.com/pscheid92/uuid/releases/tag/v0.2.0
