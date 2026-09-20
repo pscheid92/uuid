@@ -48,6 +48,48 @@ func BenchmarkNewV7Batch100(b *testing.B) {
 	}
 }
 
+// BenchmarkNewV7BatchParallel measures a shared Generator under contention:
+// every goroutine batches concurrently, so the lock scope of NewV7Batch
+// directly bounds how much of the encoding can overlap.
+func BenchmarkNewV7BatchParallel(b *testing.B) {
+	gen := NewGenerator()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			gen.NewV7Batch(1000)
+		}
+	})
+}
+
+// BenchmarkNewV7WithBatching measures single-UUID latency on a Generator
+// that another goroutine is continuously hammering with large batches.
+// The reported B/op comes from the background batcher, not from NewV7,
+// which stays zero-alloc; only ns/op is meaningful here.
+func BenchmarkNewV7WithBatching(b *testing.B) {
+	gen := NewGenerator()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				gen.NewV7Batch(10000)
+			}
+		}
+	}()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			gen.NewV7()
+		}
+	})
+	b.StopTimer()
+	close(stop)
+	<-done
+}
+
 func BenchmarkNewV8(b *testing.B) {
 	var data [16]byte
 	for b.Loop() {

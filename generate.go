@@ -291,10 +291,14 @@ func (g *Generator) NewV7Batch(n int) []UUID {
 	frac := (nano % nanoPerMilli) * 4096 / nanoPerMilli
 	seq := ms<<12 | frac
 
+	// Reserve n consecutive sequence values under the lock; encoding
+	// happens outside it so concurrent callers are not blocked for O(n).
 	g.mu.Lock()
 	if seq <= g.lastSeq {
 		seq = g.lastSeq + 1
 	}
+	g.lastSeq = seq + int64(n-1)
+	g.mu.Unlock()
 
 	for i := range n {
 		s := seq + int64(i)
@@ -313,8 +317,6 @@ func (g *Generator) NewV7Batch(n int) []UUID {
 		uuids[i][7] = byte(seq12)
 		uuids[i][8] = (uuids[i][8] & 0x3f) | 0x80 // variant RFC 9562
 	}
-	g.lastSeq = seq + int64(n-1)
-	g.mu.Unlock()
 
 	return uuids
 }
