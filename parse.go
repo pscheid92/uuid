@@ -3,6 +3,7 @@ package uuid
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // xvalues maps hex character bytes to their values; 0xff marks invalid.
@@ -152,21 +153,27 @@ func parseHexBytes(u *UUID, b []byte, offset int) bool {
 // messages and logs.
 const maxErrInputLen = 64
 
-// errInput returns s truncated to maxErrInputLen bytes for inclusion in a ParseError.
+// errInput returns s truncated to at most maxErrInputLen bytes for
+// inclusion in a ParseError. The cut is moved back to a rune boundary so
+// a multi-byte UTF-8 sequence is never split.
 func errInput(s string) string {
-	if len(s) > maxErrInputLen {
-		return s[:maxErrInputLen] + "..."
+	if len(s) <= maxErrInputLen {
+		return s
 	}
-	return s
+	n := maxErrInputLen
+	for n > maxErrInputLen-utf8.UTFMax && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "..."
 }
 
-// errInputBytes is errInput for []byte, truncating before the string
-// conversion to avoid copying large inputs.
+// errInputBytes is errInput for []byte, bounding the slice before the
+// string conversion to avoid copying large inputs.
 func errInputBytes(b []byte) string {
-	if len(b) > maxErrInputLen {
-		return string(b[:maxErrInputLen]) + "..."
+	if len(b) <= maxErrInputLen {
+		return string(b)
 	}
-	return string(b)
+	return errInput(string(b[:maxErrInputLen+1]))
 }
 
 // ParseError is returned when a UUID string cannot be parsed.
