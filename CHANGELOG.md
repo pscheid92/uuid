@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `UUID.Value` example and docs section showing a `BinaryUUID` wrapper for BINARY(16) columns (MySQL, MariaDB)
+
 ### Changed
 
 - `Generator.NewV7Batch` now reserves its sequence range under the lock and encodes the UUIDs outside it, so a large batch no longer blocks concurrent `NewV7` callers on the same generator (~2x faster single-UUID generation while a 10k batch runs in parallel)
@@ -15,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AppendText` uses `slices.Grow` instead of a private helper
 - `ParseError.Input` truncation no longer splits a multi-byte UTF-8 rune
 - URN and braced `ParseLenient` errors are checked to report the full input
+- Documented that each `Pool` keeps V7 monotonic state independent of the package-level generator and other pools
 
 ## [0.4.0] - 2026-09-10
 

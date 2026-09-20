@@ -1,6 +1,7 @@
 package uuid_test
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"slices"
 
@@ -122,4 +123,26 @@ func ExampleFromBytes() {
 	}
 	fmt.Println(id)
 	// Output: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+}
+
+// BinaryUUID stores the UUID as 16 raw bytes, for BINARY(16) columns
+// (MySQL, MariaDB). Scan already accepts 16 raw bytes, so only Value
+// needs to be overridden; every other method is promoted from uuid.UUID.
+type BinaryUUID struct{ uuid.UUID }
+
+func (b BinaryUUID) Value() (driver.Value, error) {
+	return b.Bytes(), nil
+}
+
+func ExampleUUID_Value() {
+	id := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+	v, _ := id.Value() // string, for native uuid column types
+	fmt.Printf("%T %v\n", v, v)
+
+	bv, _ := BinaryUUID{id}.Value() // []byte, for BINARY(16)
+	fmt.Printf("%T %d bytes\n", bv, len(bv.([]byte)))
+	// Output:
+	// string 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+	// []uint8 16 bytes
 }
