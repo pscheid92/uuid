@@ -386,9 +386,9 @@ func TestNewV7MonotonicSameMillisecond(t *testing.T) {
 		}
 
 		// Millisecond timestamps are the same (sub-ms ordering is in rand_a)
-		ta := a.Time()
-		tb := b.Time()
-		tc := c.Time()
+		ta, _ := a.Time()
+		tb, _ := b.Time()
+		tc, _ := c.Time()
 		if !ta.Equal(tb) {
 			t.Errorf("expected same ms timestamp: a=%v, b=%v", ta, tb)
 		}
@@ -411,7 +411,9 @@ func TestNewV7TimestampAdvances(t *testing.T) {
 			t.Errorf("V7 should be monotonic after time advance: %s <= %s", b, a)
 		}
 
-		diff := b.Time().Sub(a.Time())
+		ta, _ := a.Time()
+		tb, _ := b.Time()
+		diff := tb.Sub(ta)
 		if diff < 100*time.Millisecond {
 			t.Errorf("expected >= 100ms difference, got %v", diff)
 		}
@@ -603,5 +605,131 @@ func TestNewV7BatchInterleavedWithSingle(t *testing.T) {
 	lastOfBatch := batch[len(batch)-1]
 	if Compare(single, lastOfBatch) <= 0 {
 		t.Errorf("single NewV7 should be > last batch UUID: %s <= %s", single, lastOfBatch)
+	}
+}
+
+func TestNewV7At(t *testing.T) {
+	at := time.Date(2020, time.March, 14, 15, 9, 26, 535_897_932, time.UTC)
+	u := NewV7At(at)
+
+	if u.Version() != V7 {
+		t.Errorf("Version() = %v, want V7", u.Version())
+	}
+	if u.Variant() != VariantRFC9562 {
+		t.Errorf("Variant() = %v, want RFC9562", u.Variant())
+	}
+	got, ok := u.Time()
+	if !ok {
+		t.Fatal("Time() ok = false")
+	}
+	if want := at.Truncate(time.Millisecond); !got.Equal(want) {
+		t.Errorf("Time() = %v, want %v", got, want)
+	}
+
+	// Sub-millisecond fraction per RFC 9562 Method 3: 897_932 ns * 4096 / 1e6.
+	wantFrac := int64(897_932) * 4096 / 1_000_000
+	gotFrac := int64(u[6]&0x0f)<<8 | int64(u[7])
+	if gotFrac != wantFrac {
+		t.Errorf("rand_a fraction = %d, want %d", gotFrac, wantFrac)
+	}
+}
+
+func TestNewV7AtSortsAmongLive(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gen := NewGenerator()
+		now := time.Now()
+
+		past := NewV7At(now.Add(-time.Hour))
+		live := gen.NewV7()
+		future := NewV7At(now.Add(time.Hour))
+
+		if Compare(past, live) >= 0 {
+			t.Errorf("past NewV7At should sort before live: %s >= %s", past, live)
+		}
+		if Compare(live, future) >= 0 {
+			t.Errorf("live should sort before future NewV7At: %s >= %s", live, future)
+		}
+	})
+}
+
+func TestNewV7AtDoesNotAdvanceGenerator(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gen := NewGenerator()
+		now := time.Now()
+
+		// Backfilling with a future timestamp must not push live UUIDs ahead.
+		_ = NewV7At(now.Add(24 * time.Hour))
+		live := gen.NewV7()
+
+		got, _ := live.Time()
+		if !got.Equal(now.Truncate(time.Millisecond)) {
+			t.Errorf("live Time() = %v, want %v", got, now.Truncate(time.Millisecond))
+		}
+	})
+}
+
+func TestNewV7AtRandomTail(t *testing.T) {
+	cryptotest.SetGlobalRandom(t, 42)
+	at := time.Unix(1_700_000_000, 0)
+	a := NewV7At(at)
+	b := NewV7At(at)
+
+	if [8]byte(a[:8]) != [8]byte(b[:8]) {
+		t.Errorf("same t should give identical first 8 bytes: %x vs %x", a[:8], b[:8])
+	}
+	if a == b {
+		t.Error("rand_b should differ between calls")
+	}
+}
+
+func TestNewV7AtOutOfRangePanics(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		at   time.Time
+	}{
+		{"zero time", time.Time{}},
+		{"before epoch", time.Unix(-1, 0)},
+		{"beyond 48 bits", time.UnixMilli(1 << 48)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("NewV7At(%v) did not panic", tc.at)
+				}
+			}()
+			NewV7At(tc.at)
+		})
+	}
+
+	// Boundary: the largest representable millisecond is valid.
+	u := NewV7At(time.UnixMilli(1<<48 - 1))
+	got, _ := u.Time()
+	if got.UnixMilli() != 1<<48-1 {
+		t.Errorf("Time().UnixMilli() = %d, want %d", got.UnixMilli(), int64(1<<48-1))
+	}
+}
+
+// TestRandZeroAlloc enforces the zero-alloc guarantee for every generator
+// that reads crypto/rand. Skipped under the race detector: see raceEnabled.
+func TestRandZeroAlloc(t *testing.T) {
+	if raceEnabled {
+		t.Skip("crypto/rand.Read allocates under the race detector on Linux")
+	}
+	gen := NewGenerator()
+	pool := NewPool()
+	at := time.Now()
+	for name, fn := range map[string]func(){
+		"NewV4":      func() { _ = NewV4() },
+		"NewV7":      func() { _ = NewV7() },
+		"NewV7At":    func() { _ = NewV7At(at) },
+		"Generator":  func() { _ = gen.NewV7() },
+		"Pool.NewV4": func() { _ = pool.NewV4() },
+		"Pool.NewV7": func() { _ = pool.NewV7() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if allocs := testing.AllocsPerRun(100, fn); allocs != 0 {
+				t.Errorf("%s allocs = %v, want 0", name, allocs)
+			}
+		})
 	}
 }

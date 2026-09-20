@@ -28,7 +28,7 @@ fmt.Println(id.String())                                  // "550e8400-e29b-41d4
 |---------|-------------|----------|
 | V4 | Random | `NewV4()` / `Pool.NewV4()` / `NewV4Batch(n)` |
 | V5 | Deterministic (SHA-1) | `NewV5(namespace, name)` |
-| V7 | Timestamp + random | `NewV7()` / `Pool.NewV7()` / `NewV7Batch(n)` |
+| V7 | Timestamp + random | `NewV7()` / `NewV7At(t)` / `Pool.NewV7()` / `NewV7Batch(n)` |
 | V8 | Custom data | `NewV8(data)` |
 
 ## Usage
@@ -41,6 +41,9 @@ id := uuid.NewV4()
 
 // Timestamp-ordered (V7) - recommended for new systems, database-friendly
 id := uuid.NewV7()
+
+// Timestamp-ordered at a given time (V7) - backfill existing rows so they sort correctly
+id := uuid.NewV7At(row.CreatedAt)
 
 // Deterministic (V5, SHA-1) - same inputs always produce the same UUID
 id := uuid.NewV5(uuid.NamespaceDNS, "www.example.com")
