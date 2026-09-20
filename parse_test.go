@@ -167,16 +167,27 @@ func TestParseLenientErrors(t *testing.T) {
 }
 
 func TestParseLenientURNBadHyphens(t *testing.T) {
-	_, err := ParseLenient("urn:uuid:6ba7b810+9dad-11d1-80b4-00c04fd430c8")
-	if err == nil {
-		t.Fatal("expected error for URN with bad hyphens")
+	in := "urn:uuid:6ba7b810+9dad-11d1-80b4-00c04fd430c8"
+	_, err := ParseLenient(in)
+	perr, ok := errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	// The error must report the full input, not just the 36-char window.
+	if perr.Input != in {
+		t.Errorf("ParseError.Input = %q, want %q", perr.Input, in)
 	}
 }
 
 func TestParseLenientBracedBadHyphens(t *testing.T) {
-	_, err := ParseLenient("{6ba7b810+9dad-11d1-80b4-00c04fd430c8}")
-	if err == nil {
-		t.Fatal("expected error for braced with bad hyphens")
+	in := "{6ba7b810+9dad-11d1-80b4-00c04fd430c8}"
+	_, err := ParseLenient(in)
+	perr, ok := errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	if perr.Input != in {
+		t.Errorf("ParseError.Input = %q, want %q", perr.Input, in)
 	}
 }
 
