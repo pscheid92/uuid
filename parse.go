@@ -50,18 +50,7 @@ func Parse(s string) (UUID, error) {
 	if len(s) != 36 {
 		return Nil, &ParseError{Input: errInput(s), Msg: "expected 36-character hyphenated format"}
 	}
-	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
-		return Nil, &ParseError{Input: s, Msg: "expected hyphens at positions 8, 13, 18, 23"}
-	}
-	var u UUID
-	for i, x := range hexOffsets {
-		v, ok := xtob(s[x], s[x+1])
-		if !ok {
-			return Nil, &ParseError{Input: s, Msg: "invalid hex character"}
-		}
-		u[i] = v
-	}
-	return u, nil
+	return parseHex(s, 0)
 }
 
 // ParseLenient parses a UUID from any of these forms:
@@ -117,7 +106,7 @@ func FromBytes(b []byte) (UUID, error) {
 // skipping the hyphens at the standard positions.
 func parseHex(s string, offset int) (UUID, error) {
 	if s[offset+8] != '-' || s[offset+13] != '-' || s[offset+18] != '-' || s[offset+23] != '-' {
-		return Nil, &ParseError{Input: s, Msg: "missing or misplaced hyphens"}
+		return Nil, &ParseError{Input: s, Msg: "expected hyphens at positions 8, 13, 18, 23"}
 	}
 	var u UUID
 	for i, x := range hexOffsets {
