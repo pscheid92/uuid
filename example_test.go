@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/pscheid92/uuid"
 )
@@ -24,6 +25,29 @@ func ExampleNewV7() {
 	id := uuid.NewV7()
 	fmt.Println(id.Version())
 	// Output: V7
+}
+
+func ExampleNewV7At() {
+	// Backfill a record that was created before V7 keys were introduced.
+	created := time.Date(2020, time.March, 14, 15, 9, 26, 0, time.UTC)
+	id := uuid.NewV7At(created)
+
+	ts, ok := id.Time()
+	fmt.Println(id.Version(), ok, ts.UTC())
+	// Output: V7 true 2020-03-14 15:09:26 +0000 UTC
+}
+
+func ExampleUUID_Time() {
+	v7 := uuid.NewV7At(time.UnixMilli(1_700_000_000_000))
+	v4 := uuid.NewV4()
+
+	_, ok := v7.Time()
+	fmt.Println("V7 has a timestamp:", ok)
+	_, ok = v4.Time()
+	fmt.Println("V4 has a timestamp:", ok)
+	// Output:
+	// V7 has a timestamp: true
+	// V4 has a timestamp: false
 }
 
 func ExampleNewV4Batch() {

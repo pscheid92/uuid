@@ -156,9 +156,32 @@ func TestTimeV7(t *testing.T) {
 	u[6] = 0x70 // version 7
 	u[8] = 0x80 // variant RFC9562
 
-	got := u.Time()
+	got, ok := u.Time()
+	if !ok {
+		t.Fatal("Time() ok = false for a V7 UUID")
+	}
 	if !got.Equal(now) {
 		t.Errorf("Time() = %v, want %v", got, now)
+	}
+}
+
+func TestUUIDTimeNonV7(t *testing.T) {
+	// A V1 UUID carries a timestamp in a different layout; V4 carries none.
+	// Both must report ok=false rather than a plausible but wrong time.
+	for _, in := range []string{
+		"6ba7b810-9dad-11d1-80b4-00c04fd430c8", // V1 (NamespaceDNS)
+		"550e8400-e29b-41d4-a716-446655440000", // V4
+		"00000000-0000-0000-0000-000000000000", // Nil
+		"ffffffff-ffff-ffff-ffff-ffffffffffff", // Max
+	} {
+		u := MustParse(in)
+		got, ok := u.Time()
+		if ok {
+			t.Errorf("Time() ok = true for %s (%s)", in, u.Version())
+		}
+		if !got.IsZero() {
+			t.Errorf("Time() = %v for %s, want zero time", got, in)
+		}
 	}
 }
 

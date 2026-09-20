@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `NewV7At(t time.Time)` builds a V7 UUID whose timestamp fields encode `t`, for backfilling rows that already have a creation time. Pure function: it never touches `Generator` or `Pool` monotonic state. Panics for times outside the 48-bit range, including the zero `time.Time`.
 - `UUID.Value` example and docs section showing a `BinaryUUID` wrapper for BINARY(16) columns (MySQL, MariaDB)
 
 ### Changed
+
+- **Breaking:** `UUID.Time()` now returns `(time.Time, bool)`. The boolean is false, and the time is the zero value, for any non-V7 UUID. Previously a V1 or V6 UUID decoded to a plausible but wrong time, and V4 to garbage. Migrate with `t, _ := id.Time()` where the version is already known.
 
 - `Generator.NewV7Batch` now reserves its sequence range under the lock and encodes the UUIDs outside it, so a large batch no longer blocks concurrent `NewV7` callers on the same generator (~2x faster single-UUID generation while a 10k batch runs in parallel)
 - `Compare` uses `bytes.Compare` instead of string conversions (~3x faster)

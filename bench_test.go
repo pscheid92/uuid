@@ -1,6 +1,9 @@
 package uuid
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func BenchmarkNewV4(b *testing.B) {
 	for b.Loop() {
@@ -88,6 +91,13 @@ func BenchmarkNewV7WithBatching(b *testing.B) {
 	b.StopTimer()
 	close(stop)
 	<-done
+}
+
+func BenchmarkNewV7At(b *testing.B) {
+	at := time.Now()
+	for b.Loop() {
+		NewV7At(at)
+	}
 }
 
 func BenchmarkNewV8(b *testing.B) {

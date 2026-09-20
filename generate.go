@@ -190,6 +190,52 @@ func NewV8(data [16]byte) UUID {
 	return u
 }
 
+// maxV7Millis is the exclusive upper bound of the 48-bit V7 timestamp field.
+const maxV7Millis = 1 << 48
+
+// NewV7At returns a Version 7 UUID whose timestamp fields encode t instead
+// of the current time. It is intended for backfilling records that already
+// have a creation time, so their keys sort among live V7 UUIDs at the
+// right position.
+//
+// The 48-bit millisecond field and the 12-bit sub-millisecond fraction are
+// derived from t exactly as [Generator.NewV7] derives them from the clock,
+// so a UUID created "at" an instant sorts where a live UUID created at that
+// instant would. The remaining 62 bits are random from crypto/rand. Two
+// calls with the same t tie on their first 8 bytes and are ordered only by
+// that random tail.
+//
+// NewV7At is a pure function: it neither reads nor advances the monotonic
+// state of any [Generator] or [Pool], so backfilling never pushes live
+// UUIDs ahead of the wall clock.
+//
+// t must be representable in the 48-bit field, that is between the Unix
+// epoch and roughly the year 10889; NewV7At panics otherwise. A zero
+// [time.Time] is out of range, which turns an uninitialized field into an
+// immediate panic rather than a silently wrong timestamp.
+func NewV7At(t time.Time) UUID {
+	ms := t.UnixMilli()
+	if ms < 0 || ms >= maxV7Millis {
+		panic("uuid: NewV7At: time out of range for a 48-bit millisecond timestamp")
+	}
+	// RFC 9562 Section 6.2 Method 3: sub-millisecond precision scaled to 12 bits.
+	frac := int64(t.Nanosecond()%nanoPerMilli) * 4096 / nanoPerMilli
+
+	var u UUID
+	_, _ = rand.Read(u[8:])
+
+	u[0] = byte(ms >> 40)
+	u[1] = byte(ms >> 32)
+	u[2] = byte(ms >> 24)
+	u[3] = byte(ms >> 16)
+	u[4] = byte(ms >> 8)
+	u[5] = byte(ms)
+	u[6] = 0x70 | byte(frac>>8)&0x0f
+	u[7] = byte(frac)
+	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	return u
+}
+
 // defaultGen is the package-level V7 generator, analogous to http.DefaultClient.
 var defaultGen = NewGenerator()
 

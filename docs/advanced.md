@@ -16,6 +16,18 @@ The package-level `uuid.NewV7()` uses a default shared generator, so it also pro
 
 See [Internals: V7 Monotonic Counter Fallback](internals.md#v7-monotonic-counter-fallback) for how this works under the hood.
 
+## Backfilling with NewV7At
+
+When a table gets V7 keys after rows already exist, `NewV7At` builds a V7 UUID for a past creation time so the backfilled keys sort among live ones at the right position:
+
+```go
+id := uuid.NewV7At(row.CreatedAt)
+```
+
+The millisecond field and the 12-bit sub-millisecond fraction come from the given time, laid out exactly as the live generator lays them out, and the remaining 62 bits are random. Two calls with the same time tie on their first 8 bytes and are ordered only by the random tail.
+
+`NewV7At` is a pure function and never touches the monotonic state of any `Generator` or `Pool`, so backfilling with a future timestamp cannot push live UUIDs ahead of the wall clock. It panics for times outside the 48-bit range (before 1970 or after roughly the year 10889); a zero `time.Time` is out of range, so an uninitialized field fails loudly instead of producing a silently wrong key.
+
 ## High-Throughput Generation
 
 For hot paths, `Pool` amortizes the cost of `crypto/rand` by pre-generating random bytes in bulk:
@@ -47,7 +59,7 @@ id := uuid.NewV7()
 id.Version()  // uuid.V7
 id.Variant()  // uuid.VariantRFC9562
 id.IsNil()    // false
-id.Time()     // time.Time (millisecond precision, V7 only)
+id.Time()     // (time.Time, bool): millisecond precision; ok is false for non-V7
 id.Bytes()    // []byte copy of the 16 raw bytes
 ```
 
