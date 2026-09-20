@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Zero-alloc tests now cover `NewV4`, `NewV7`, `NewV7At`, `Generator.NewV7`, `Pool.NewV4`, and `Pool.NewV7`; they skip under the race detector, where `crypto/rand.Read` allocates on Linux, and CI runs them separately without it
 - **Breaking:** `UUID.Time()` now returns `(time.Time, bool)`. The boolean is false, and the time is the zero value, for any non-V7 UUID. Previously a V1 or V6 UUID decoded to a plausible but wrong time, and V4 to garbage. Migrate with `t, _ := id.Time()` where the version is already known.
 
 - `Generator.NewV7Batch` now reserves its sequence range under the lock and encodes the UUIDs outside it, so a large batch no longer blocks concurrent `NewV7` callers on the same generator (~2x faster single-UUID generation while a 10k batch runs in parallel)

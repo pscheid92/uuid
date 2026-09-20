@@ -28,6 +28,11 @@ jobs:
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
 
+      # Zero-alloc tests skip under -race (crypto/rand allocates there on
+      # Linux), so run once more without it to enforce the guarantee.
+      - name: Test (zero-alloc guarantees, no race detector)
+        run: go test -count=1 -run ZeroAlloc ./...
+
       - name: Verify 100% coverage
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep ^total: | awk '{print $3}')

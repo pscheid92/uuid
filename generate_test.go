@@ -709,12 +709,27 @@ func TestNewV7AtOutOfRangePanics(t *testing.T) {
 	}
 }
 
-func TestNewV7AtZeroAlloc(t *testing.T) {
+// TestRandZeroAlloc enforces the zero-alloc guarantee for every generator
+// that reads crypto/rand. Skipped under the race detector: see raceEnabled.
+func TestRandZeroAlloc(t *testing.T) {
+	if raceEnabled {
+		t.Skip("crypto/rand.Read allocates under the race detector on Linux")
+	}
+	gen := NewGenerator()
+	pool := NewPool()
 	at := time.Now()
-	allocs := testing.AllocsPerRun(100, func() {
-		_ = NewV7At(at)
-	})
-	if allocs != 0 {
-		t.Errorf("NewV7At allocs = %v, want 0", allocs)
+	for name, fn := range map[string]func(){
+		"NewV4":      func() { _ = NewV4() },
+		"NewV7":      func() { _ = NewV7() },
+		"NewV7At":    func() { _ = NewV7At(at) },
+		"Generator":  func() { _ = gen.NewV7() },
+		"Pool.NewV4": func() { _ = pool.NewV4() },
+		"Pool.NewV7": func() { _ = pool.NewV7() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if allocs := testing.AllocsPerRun(100, fn); allocs != 0 {
+				t.Errorf("%s allocs = %v, want 0", name, allocs)
+			}
+		})
 	}
 }
