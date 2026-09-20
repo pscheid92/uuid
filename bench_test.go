@@ -60,11 +60,11 @@ func BenchmarkNewV7BatchParallel(b *testing.B) {
 	})
 }
 
-// BenchmarkNewV7WhileBatching measures single-UUID latency on a Generator
+// BenchmarkNewV7WithBatching measures single-UUID latency on a Generator
 // that another goroutine is continuously hammering with large batches.
 // The reported B/op comes from the background batcher, not from NewV7,
 // which stays zero-alloc; only ns/op is meaningful here.
-func BenchmarkNewV7WhileBatching(b *testing.B) {
+func BenchmarkNewV7WithBatching(b *testing.B) {
 	gen := NewGenerator()
 	stop := make(chan struct{})
 	done := make(chan struct{})
