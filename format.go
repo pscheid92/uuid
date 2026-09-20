@@ -3,6 +3,7 @@ package uuid
 import (
 	"database/sql/driver"
 	"fmt"
+	"slices"
 )
 
 const hexDigits = "0123456789abcdef"
@@ -26,7 +27,8 @@ func (u UUID) URN() string {
 // AppendText appends the textual (36-char hyphenated) representation of u to b.
 // It implements [encoding.TextAppender].
 func (u UUID) AppendText(b []byte) ([]byte, error) {
-	b = grow(b, 36)
+	b = slices.Grow(b, 36)
+	b = b[:len(b)+36]
 	encodeHex(b[len(b)-36:], u)
 	return b, nil
 }
@@ -119,17 +121,6 @@ func encodeHex(dst []byte, u UUID) {
 	dst[33] = hex[u[14]&0x0f]
 	dst[34] = hex[u[15]>>4]
 	dst[35] = hex[u[15]&0x0f]
-}
-
-// grow appends n zero bytes to b and returns the extended slice.
-func grow(b []byte, n int) []byte {
-	l := len(b)
-	if cap(b)-l >= n {
-		return b[:l+n]
-	}
-	newBuf := make([]byte, l+n, (l+n)*2)
-	copy(newBuf, b)
-	return newBuf
 }
 
 // Scan implements [database/sql.Scanner]. It supports scanning from:

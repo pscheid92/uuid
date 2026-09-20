@@ -3,6 +3,7 @@ package uuid
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // xvalues maps hex character bytes to their values; 0xff marks invalid.
@@ -72,20 +73,20 @@ func Parse(s string) (UUID, error) {
 func ParseLenient(s string) (UUID, error) {
 	switch len(s) {
 	case 36: // standard
-		return parseHex(s, 0)
+		return parseHex(s, s)
 
 	case 45: // urn:uuid:
 		// The urn scheme and uuid namespace are case-insensitive (RFC 8141).
 		if !strings.EqualFold(s[:9], "urn:uuid:") {
 			return Nil, &ParseError{Input: s, Msg: "expected urn:uuid: prefix"}
 		}
-		return parseHex(s, 9)
+		return parseHex(s[9:45], s)
 
 	case 38: // {braced}
 		if s[0] != '{' || s[37] != '}' {
 			return Nil, &ParseError{Input: s, Msg: "expected braces"}
 		}
-		return parseHex(s, 1)
+		return parseHex(s[1:37], s)
 
 	case 32: // compact (no hyphens)
 		return parseCompact(s)
@@ -113,18 +114,20 @@ func FromBytes(b []byte) (UUID, error) {
 	return UUID(b), nil
 }
 
-// parseHex decodes the 32 hex digits from s starting at offset,
-// skipping the hyphens at the standard positions.
-func parseHex(s string, offset int) (UUID, error) {
-	if s[offset+8] != '-' || s[offset+13] != '-' || s[offset+18] != '-' || s[offset+23] != '-' {
-		return Nil, &ParseError{Input: s, Msg: "missing or misplaced hyphens"}
+// parseHex decodes the 36-character hyphenated window s, which the caller
+// has sliced out of the full input. Passing a window instead of an offset
+// keeps every index a constant, so the compiler can elide bounds checks.
+// Errors report the full input.
+func parseHex(s, input string) (UUID, error) {
+	_ = s[35]
+	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
+		return Nil, &ParseError{Input: input, Msg: "expected hyphens at positions 8, 13, 18, 23"}
 	}
 	var u UUID
 	for i, x := range hexOffsets {
-		x += offset
 		v, ok := xtob(s[x], s[x+1])
 		if !ok {
-			return Nil, &ParseError{Input: s, Msg: "invalid hex character"}
+			return Nil, &ParseError{Input: input, Msg: "invalid hex character"}
 		}
 		u[i] = v
 	}
@@ -163,21 +166,27 @@ func parseHexBytes(u *UUID, b []byte, offset int) bool {
 // messages and logs.
 const maxErrInputLen = 64
 
-// errInput returns s truncated to maxErrInputLen bytes for inclusion in a ParseError.
+// errInput returns s truncated to at most maxErrInputLen bytes for
+// inclusion in a ParseError. The cut is moved back to a rune boundary so
+// a multi-byte UTF-8 sequence is never split.
 func errInput(s string) string {
-	if len(s) > maxErrInputLen {
-		return s[:maxErrInputLen] + "..."
+	if len(s) <= maxErrInputLen {
+		return s
 	}
-	return s
+	n := maxErrInputLen
+	for n > maxErrInputLen-utf8.UTFMax && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "..."
 }
 
-// errInputBytes is errInput for []byte, truncating before the string
-// conversion to avoid copying large inputs.
+// errInputBytes is errInput for []byte, bounding the slice before the
+// string conversion to avoid copying large inputs.
 func errInputBytes(b []byte) string {
-	if len(b) > maxErrInputLen {
-		return string(b[:maxErrInputLen]) + "..."
+	if len(b) <= maxErrInputLen {
+		return string(b)
 	}
-	return string(b)
+	return errInput(string(b[:maxErrInputLen+1]))
 }
 
 // ParseError is returned when a UUID string cannot be parsed.

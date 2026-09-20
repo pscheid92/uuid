@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestParse(t *testing.T) {
@@ -166,16 +167,27 @@ func TestParseLenientErrors(t *testing.T) {
 }
 
 func TestParseLenientURNBadHyphens(t *testing.T) {
-	_, err := ParseLenient("urn:uuid:6ba7b810+9dad-11d1-80b4-00c04fd430c8")
-	if err == nil {
-		t.Fatal("expected error for URN with bad hyphens")
+	in := "urn:uuid:6ba7b810+9dad-11d1-80b4-00c04fd430c8"
+	_, err := ParseLenient(in)
+	perr, ok := errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	// The error must report the full input, not just the 36-char window.
+	if perr.Input != in {
+		t.Errorf("ParseError.Input = %q, want %q", perr.Input, in)
 	}
 }
 
 func TestParseLenientBracedBadHyphens(t *testing.T) {
-	_, err := ParseLenient("{6ba7b810+9dad-11d1-80b4-00c04fd430c8}")
-	if err == nil {
-		t.Fatal("expected error for braced with bad hyphens")
+	in := "{6ba7b810+9dad-11d1-80b4-00c04fd430c8}"
+	_, err := ParseLenient(in)
+	perr, ok := errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	if perr.Input != in {
+		t.Errorf("ParseError.Input = %q, want %q", perr.Input, in)
 	}
 }
 
@@ -245,5 +257,33 @@ func TestParseRoundTrip(t *testing.T) {
 		if got := u.String(); got != s {
 			t.Errorf("round-trip: Parse(%q).String() = %q", s, got)
 		}
+	}
+}
+
+func TestParseErrorInputRuneBoundary(t *testing.T) {
+	// 63 ASCII bytes followed by a 3-byte rune: a byte-boundary cut at 64
+	// would split the rune. The cut must back off to 63.
+	s := strings.Repeat("a", 63) + "€" + strings.Repeat("b", 10)
+	_, err := Parse(s)
+	perr, ok := errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	want := strings.Repeat("a", 63) + "..."
+	if perr.Input != want {
+		t.Errorf("ParseError.Input = %q, want %q", perr.Input, want)
+	}
+	if !utf8.ValidString(perr.Input) {
+		t.Errorf("ParseError.Input is not valid UTF-8: %q", perr.Input)
+	}
+
+	var u UUID
+	err = u.UnmarshalText([]byte(s))
+	perr, ok = errors.AsType[*ParseError](err)
+	if !ok {
+		t.Fatalf("error type = %T, want *ParseError", err)
+	}
+	if perr.Input != want {
+		t.Errorf("UnmarshalText ParseError.Input = %q, want %q", perr.Input, want)
 	}
 }

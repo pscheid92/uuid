@@ -41,7 +41,7 @@
 package uuid
 
 import (
-	"cmp"
+	"bytes"
 	"time"
 )
 
@@ -186,5 +186,5 @@ func (u UUID) Time() time.Time {
 // The result is 0 if a == b, -1 if a < b, and +1 if a > b.
 // This is suitable for use with [slices.SortFunc].
 func Compare(a, b UUID) int {
-	return cmp.Compare(string(a[:]), string(b[:]))
+	return bytes.Compare(a[:], b[:])
 }
