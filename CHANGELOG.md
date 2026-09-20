@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `Generator.NewV7Batch` now reserves its sequence range under the lock and encodes the UUIDs outside it, so a large batch no longer blocks concurrent `NewV7` callers on the same generator (~2x faster single-UUID generation while a 10k batch runs in parallel)
+- `Compare` uses `bytes.Compare` instead of string conversions (~3x faster)
+- `ParseLenient` hands the hex decoder a 36-byte window instead of an offset, letting the compiler elide bounds checks (~20% faster); `Parse` is unchanged
+- `AppendText` uses `slices.Grow` instead of a private helper
+- `ParseError.Input` truncation no longer splits a multi-byte UTF-8 rune
+- URN and braced `ParseLenient` errors are checked to report the full input
 
 ## [0.4.0] - 2026-09-10
 
