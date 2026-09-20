@@ -101,9 +101,24 @@ UUIDs are sortable via `uuid.Compare`:
 slices.SortFunc(ids, uuid.Compare)
 ```
 
+### Standard Library Interop
+
+Go 1.27 added a `uuid` package to the standard library. Both it and this package define `UUID` as `[16]byte`, so values convert in either direction at zero cost:
+
+```go
+import stdlib "uuid"
+
+id := uuid.UUID(stdlib.New())      // stdlib -> this package
+std := stdlib.UUID(uuid.NewV7())   // this package -> stdlib
+```
+
+Use the conversion at API boundaries where a dependency hands you a standard library UUID, and keep this package's type internally for `Version`, `Time`, strict parsing, SQL support, and the generation APIs the standard library leaves out.
+
 ## Why This Library?
 
-Go already has [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](https://github.com/gofrs/uuid). Here's what this one does differently:
+Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](https://github.com/gofrs/uuid) have been around for years. The standard library covers V4, V7, lenient parsing, and text encoding with the same `[16]byte` type as this package, so it is the right choice when that is all you need. This library is for when it is not:
+
+- **Everything the standard library leaves out**: V5 and V8, `Version`/`Variant`/`Time` accessors, strict `Parse`, typed `ParseError` with the offending input, binary marshaling, `database/sql` `Scan`/`Value`, per-instance `Generator` monotonicity, `NewV7At` for backfilling, and the `Pool` and `Batch` high-throughput paths. Convert between the two types for free (see [Standard Library Interop](#standard-library-interop)).
 
 - **Zero allocations**: NewV4, NewV5, NewV7, Parse, MarshalText, and UnmarshalText all allocate nothing. Other libraries allocate at least once per call.
 - **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~25x faster bulk V4) amortize `crypto/rand` cost. No equivalent exists in other libraries.
@@ -120,21 +135,23 @@ Go already has [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](ht
 
 ## Benchmarks
 
-All generation and formatting hot paths are zero-alloc. Compared to [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](https://github.com/gofrs/uuid) on Apple M2:
+All generation and formatting hot paths are zero-alloc. Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://github.com/google/uuid), and [gofrs/uuid](https://github.com/gofrs/uuid) on Apple M2:
 
-| Benchmark | pscheid92/uuid | google/uuid | gofrs/uuid |
-|-----------|---------------|-------------|------------|
-| NewV4 | **247 ns** | 291 ns | 274 ns |
-| NewV4 (Pool) | **17 ns** | - | - |
-| NewV4Batch(100) | **1,025 ns** | 25,483 ns | 24,768 ns |
-| NewV5 | **70 ns** | 133 ns | 67 ns |
-| NewV7 | **106 ns** | 309 ns | 130 ns |
-| NewV7 (Pool) | **50 ns** | - | - |
-| NewV7Batch(100) | **800 ns** | 30,285 ns | 12,410 ns |
-| Parse | **23 ns** | 21 ns | 27 ns |
-| MarshalText | **11 ns** | 18 ns | 27 ns |
+| Benchmark | pscheid92/uuid | stdlib (Go 1.27) | google/uuid | gofrs/uuid |
+|-----------|---------------|------------------|-------------|------------|
+| NewV4 | **239 ns** | 237 ns | 250 ns | 245 ns |
+| NewV4 (Pool) | **17 ns** | - | - | - |
+| NewV4Batch(100) | **752 ns** | - | 24,951 ns | 24,559 ns |
+| NewV5 | **63 ns** | - | 100 ns | 61 ns |
+| NewV7 | **104 ns** | 102 ns | 297 ns | 119 ns |
+| NewV7 (Pool) | **47 ns** | - | - | - |
+| NewV7Batch(100) | **787 ns** | - | 29,748 ns | 11,797 ns |
+| Parse | **18 ns** | 25 ns | 19 ns | 27 ns |
+| UnmarshalText | **18 ns** | 25 ns | 19 ns | 27 ns |
+| String | **20 ns** | 30 ns | 27 ns | 24 ns |
+| MarshalText | **11 ns** | 20 ns | 18 ns | 22 ns |
 
-All entries for this library are zero-alloc. google/uuid allocates on every call; gofrs/uuid allocates on every call except NewV5. Run the comparison benchmarks yourself:
+All entries for this library and the standard library are zero-alloc except String, which allocates its result. Generation is at parity with the standard library since both read `crypto/rand` the same way; the text paths are 25–45% faster here thanks to lookup-table parsing and an unrolled encoder. google/uuid allocates on every generation call; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
 
 ```bash
 cd bench && go test -bench=. -benchmem ./...

@@ -2,6 +2,7 @@ package bench_test
 
 import (
 	"testing"
+	stdlib "uuid"
 
 	gofrs "github.com/gofrs/uuid/v5"
 	google "github.com/google/uuid"
@@ -28,6 +29,11 @@ func BenchmarkNewV4(b *testing.B) {
 			gofrs.NewV4()
 		}
 	})
+	b.Run("stdlib", func(b *testing.B) {
+		for b.Loop() {
+			stdlib.NewV4()
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +55,11 @@ func BenchmarkNewV7(b *testing.B) {
 	b.Run("gofrs", func(b *testing.B) {
 		for b.Loop() {
 			gofrs.NewV7()
+		}
+	})
+	b.Run("stdlib", func(b *testing.B) {
+		for b.Loop() {
+			stdlib.NewV7()
 		}
 	})
 }
@@ -196,6 +207,11 @@ func BenchmarkParse(b *testing.B) {
 			gofrs.FromString(s)
 		}
 	})
+	b.Run("stdlib", func(b *testing.B) {
+		for b.Loop() {
+			stdlib.Parse(s)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +233,12 @@ func BenchmarkString(b *testing.B) {
 	})
 	b.Run("gofrs", func(b *testing.B) {
 		u := gofrs.Must(gofrs.FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
+		for b.Loop() {
+			_ = u.String()
+		}
+	})
+	b.Run("stdlib", func(b *testing.B) {
+		u := stdlib.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 		for b.Loop() {
 			_ = u.String()
 		}
@@ -246,6 +268,12 @@ func BenchmarkMarshalText(b *testing.B) {
 			u.MarshalText()
 		}
 	})
+	b.Run("stdlib", func(b *testing.B) {
+		u := stdlib.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+		for b.Loop() {
+			u.MarshalText()
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +297,12 @@ func BenchmarkUnmarshalText(b *testing.B) {
 	})
 	b.Run("gofrs", func(b *testing.B) {
 		var u gofrs.UUID
+		for b.Loop() {
+			u.UnmarshalText(text)
+		}
+	})
+	b.Run("stdlib", func(b *testing.B) {
+		var u stdlib.UUID
 		for b.Loop() {
 			u.UnmarshalText(text)
 		}

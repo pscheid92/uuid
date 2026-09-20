@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `NewV7At(t time.Time)` builds a V7 UUID whose timestamp fields encode `t`, for backfilling rows that already have a creation time. Pure function: it never touches `Generator` or `Pool` monotonic state. Panics for times outside the 48-bit range, including the zero `time.Time`.
 - `UUID.Value` example and docs section showing a `BinaryUUID` wrapper for BINARY(16) columns (MySQL, MariaDB)
+- Standard library interop: README section, docs, and `ExampleUUID_stdlibInterop` showing the zero-cost `[16]byte` conversion to and from the Go 1.27 `uuid` package
+- The Go 1.27 standard library `uuid` package is included in the comparison benchmarks (`bench/`) and the README table; README positioning is now relative to the standard library
 
 ### Changed
 

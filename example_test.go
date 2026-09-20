@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"time"
+	stdlib "uuid"
 
 	"github.com/pscheid92/uuid"
 )
@@ -169,4 +170,21 @@ func ExampleUUID_Value() {
 	// Output:
 	// string 6ba7b810-9dad-11d1-80b4-00c04fd430c8
 	// []uint8 16 bytes
+}
+
+// Both this package and the standard library uuid package (Go 1.27+) define
+// UUID as [16]byte, so values convert in either direction at zero cost.
+func ExampleUUID_stdlibInterop() {
+	std := stdlib.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+	// Standard library -> this package: gain Version, Time, Scan/Value, ...
+	id := uuid.UUID(std)
+	fmt.Println(id.Version())
+
+	// This package -> standard library.
+	back := stdlib.UUID(uuid.NewV5(uuid.NamespaceDNS, "example.com"))
+	fmt.Println(back == stdlib.UUID(uuid.NewV5(uuid.NamespaceDNS, "example.com")))
+	// Output:
+	// V1
+	// true
 }
