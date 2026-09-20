@@ -35,7 +35,7 @@ ids  = uuid.NewV7Batch(1000) // ~13x faster, all monotonically increasing
 
 `uuid.NewV7Batch` uses the package-level default generator; call `NewV7Batch` on a dedicated `Generator` for isolated monotonicity guarantees.
 
-Both `Pool` and `Batch` draw exclusively from `crypto/rand`, and `Pool` is safe for concurrent use. One caveat: `Pool` buffers pre-generated randomness in process memory, so it is not fork-safe — a forked process or a cloned/restored VM snapshot duplicates the buffer and can emit identical UUIDs from both copies. Use the package-level functions where that matters. The batch APIs are unaffected since they read fresh randomness on every call.
+Both `Pool` and `Batch` draw exclusively from `crypto/rand`, and `Pool` is safe for concurrent use. Each `Pool` keeps its own V7 monotonic state, independent of the package-level `NewV7` generator and of any other `Pool` or `Generator`; UUIDs drawn from different sources are not ordered relative to each other, so pick one source per ordering domain. One caveat: `Pool` buffers pre-generated randomness in process memory, so it is not fork-safe — a forked process or a cloned/restored VM snapshot duplicates the buffer and can emit identical UUIDs from both copies. Use the package-level functions where that matters. The batch APIs are unaffected since they read fresh randomness on every call.
 
 See [Internals: Pool](internals.md#pool-amortizing-cryptorand) for how pooling works.
 
@@ -56,6 +56,20 @@ id.Bytes()    // []byte copy of the 16 raw bytes
 ```go
 slices.SortFunc(ids, uuid.Compare)
 ```
+
+## SQL: BINARY(16) Columns
+
+`Value` returns the 36-character string, which is what native `uuid` column types (PostgreSQL, SQLite, CockroachDB) expect. MySQL and MariaDB have no native type and conventionally store UUIDs in `BINARY(16)`. `Scan` already accepts 16 raw bytes, so only `Value` needs to change. Wrap the type:
+
+```go
+type BinaryUUID struct{ uuid.UUID }
+
+func (b BinaryUUID) Value() (driver.Value, error) {
+	return b.Bytes(), nil
+}
+```
+
+`Scan`, `String`, `MarshalText`, and every other method are promoted from the embedded `uuid.UUID`, so the wrapper behaves identically everywhere except when written to the database.
 
 ## Namespace Constants
 

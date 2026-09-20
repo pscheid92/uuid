@@ -138,6 +138,10 @@ func (p *Pool) NewV4() UUID {
 // the crypto/rand overhead by buffering random bytes for the rand_b field.
 // Timestamps are computed live to remain accurate, though under sustained
 // bursts they may run slightly ahead of the wall clock (see [Generator.NewV7]).
+//
+// Each Pool keeps its own monotonic state, independent of the package-level
+// [NewV7] generator and of every other Pool or [Generator]. UUIDs drawn from
+// different sources are not ordered relative to each other.
 func (p *Pool) NewV7() UUID {
 	p.mu.Lock()
 	if p.v7left == 0 {

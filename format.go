@@ -164,7 +164,10 @@ func (u *UUID) Scan(src any) error {
 }
 
 // Value implements [database/sql/driver.Valuer].
-// It returns the UUID as a 36-character string.
+// It returns the UUID as a 36-character string, which suits native uuid
+// column types (PostgreSQL, SQLite, CockroachDB). For BINARY(16) columns,
+// wrap the type and return the raw bytes instead; see the
+// [UUID.Value] example. [UUID.Scan] already accepts 16 raw bytes.
 func (u UUID) Value() (driver.Value, error) {
 	return u.String(), nil
 }
