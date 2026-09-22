@@ -33,15 +33,18 @@ func FuzzParse(f *testing.F) {
 }
 
 // FuzzDecodersAgree cross-checks the separate hand-written decoders: Parse,
-// UnmarshalText, ParseLenient (all four forms), and Scan must accept the
-// same inputs, produce the same UUID, and fail with the same error.
+// UnmarshalText, ParseLenient (all four forms), and Scan (string and []byte)
+// must accept the same inputs, produce the same UUID, and fail with the same
+// error.
 func FuzzDecodersAgree(f *testing.F) {
 	f.Add("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 	f.Add("6BA7B810-9DAD-11D1-80B4-00C04FD430C8")
 	f.Add("6ba7b810-9dad-11d1-80b4-00c04fd430cg")
 	f.Add("6ba7b810+9dad-11d1-80b4-00c04fd430c8")
 	f.Add("urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	f.Add("{6ba7b810-9dad-11d1-80b4-00c04fd430c8}")
 	f.Add("6ba7b8109dad11d180b400c04fd430c8")
+	f.Add("6ba7b8109dad11d180b400c04fd430cg")
 	f.Add("")
 
 	f.Fuzz(func(t *testing.T, s string) {
@@ -49,17 +52,27 @@ func FuzzDecodersAgree(f *testing.F) {
 
 		var fromText UUID
 		textErr := fromText.UnmarshalText([]byte(s))
-		if (err == nil) != (textErr == nil) {
-			t.Fatalf("Parse err = %v, UnmarshalText err = %v", err, textErr)
+		sameResult(t, "UnmarshalText", fromText, textErr, u, err)
+
+		// ParseLenient's standard form shares Parse's contract, errors included.
+		lenient, lenientErr := ParseLenient(s)
+		if len(s) == 36 {
+			sameResult(t, "ParseLenient", lenient, lenientErr, u, err)
 		}
+
+		// Scan parses text with ParseLenient, whether it arrives as a string
+		// or as a []byte (except a 16-byte []byte, which is raw).
+		var fromString UUID
+		stringErr := fromString.Scan(s)
+		sameResult(t, "Scan(string)", fromString, stringErr, lenient, lenientErr)
+		if len(s) != 16 {
+			var fromBytes UUID
+			bytesErr := fromBytes.Scan([]byte(s))
+			sameResult(t, "Scan([]byte)", fromBytes, bytesErr, lenient, lenientErr)
+		}
+
 		if err != nil {
-			if err.Error() != textErr.Error() {
-				t.Fatalf("error mismatch:\n Parse:         %v\n UnmarshalText: %v", err, textErr)
-			}
 			return
-		}
-		if fromText != u {
-			t.Fatalf("UnmarshalText = %s, Parse = %s", fromText, u)
 		}
 		if u2, err := Parse(u.String()); err != nil || u2 != u {
 			t.Fatalf("round-trip Parse(%q) = %s, %v", u.String(), u2, err)
@@ -71,12 +84,24 @@ func FuzzDecodersAgree(f *testing.F) {
 			if got, err := ParseLenient(form); err != nil || got != u {
 				t.Fatalf("ParseLenient(%q) = %s, %v; want %s", form, got, err, u)
 			}
-			var scanned UUID
-			if err := scanned.Scan(form); err != nil || scanned != u {
-				t.Fatalf("Scan(%q) = %s, %v; want %s", form, scanned, err, u)
+			var fromString, fromBytes UUID
+			if err := fromString.Scan(form); err != nil || fromString != u {
+				t.Fatalf("Scan(%q) = %s, %v; want %s", form, fromString, err, u)
+			}
+			if err := fromBytes.Scan([]byte(form)); err != nil || fromBytes != u {
+				t.Fatalf("Scan([]byte(%q)) = %s, %v; want %s", form, fromBytes, err, u)
 			}
 		}
 	})
+}
+
+// sameResult fails t unless a decoder returned the same UUID and the same
+// error (or lack of one) as the reference decoder.
+func sameResult(t *testing.T, name string, got UUID, gotErr error, want UUID, wantErr error) {
+	t.Helper()
+	if got != want || (gotErr == nil) != (wantErr == nil) || (gotErr != nil && gotErr.Error() != wantErr.Error()) {
+		t.Fatalf("%s = %s, %v; want %s, %v", name, got, gotErr, want, wantErr)
+	}
 }
 
 func FuzzParseLenient(f *testing.F) {

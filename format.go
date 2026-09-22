@@ -177,7 +177,7 @@ func (u *UUID) Scan(src any) error {
 // column types (PostgreSQL, CockroachDB, MariaDB 10.7+) and text columns
 // (SQLite has no UUID type). For BINARY(16) columns,
 // wrap the type and return the raw bytes instead; see the
-// [UUID.Value] example. [UUID.Scan] already accepts 16 raw bytes.
+// [UUID.Value] example. [UUID.Scan] already accepts 16 raw bytes as []byte.
 func (u UUID) Value() (driver.Value, error) {
 	return u.String(), nil
 }
