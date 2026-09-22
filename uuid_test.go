@@ -139,6 +139,38 @@ func TestCompare(t *testing.T) {
 	if Compare(a, a) != 0 {
 		t.Errorf("Compare(a, a) should be 0")
 	}
+
+	// The method matches the package-level function.
+	for _, pair := range [][2]UUID{{a, b}, {b, a}, {a, a}, {Nil, Max}} {
+		if got, want := pair[0].Compare(pair[1]), Compare(pair[0], pair[1]); got != want {
+			t.Errorf("%s.Compare(%s) = %d, want %d", pair[0], pair[1], got, want)
+		}
+	}
+}
+
+func TestTimeNonRFCVariant(t *testing.T) {
+	// Version bits read 7, but the version field is only defined for the
+	// RFC 9562 variant, so none of these carry a V7 timestamp.
+	v7 := NewV7At(time.Unix(1_700_000_000, 0))
+	for _, tc := range []struct {
+		name string
+		b8   byte
+	}{
+		{"NCS", 0x00},
+		{"Microsoft", 0xc0},
+		{"Future", 0xe0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := v7
+			u[8] = tc.b8 | u[8]&0x1f
+			if u.Variant().String() != tc.name {
+				t.Fatalf("test setup: Variant() = %v, want %s", u.Variant(), tc.name)
+			}
+			if got, ok := u.Time(); ok || !got.IsZero() {
+				t.Errorf("Time() = (%v, %v), want (zero, false)", got, ok)
+			}
+		})
+	}
 }
 
 func TestTimeV7(t *testing.T) {

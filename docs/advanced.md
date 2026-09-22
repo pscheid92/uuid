@@ -26,7 +26,7 @@ id := uuid.NewV7At(row.CreatedAt)
 
 The millisecond field and the 12-bit sub-millisecond fraction come from the given time, laid out exactly as the live generator lays them out, and the remaining 62 bits are random. Two calls with the same time tie on their first 8 bytes and are ordered only by the random tail.
 
-`NewV7At` is a pure function and never touches the monotonic state of any `Generator` or `Pool`, so backfilling with a future timestamp cannot push live UUIDs ahead of the wall clock. It panics for times outside the 48-bit range (before 1970 or after roughly the year 10889); a zero `time.Time` is out of range, so an uninitialized field fails loudly instead of producing a silently wrong key.
+`NewV7At` is stateless: it never touches the monotonic state of any `Generator` or `Pool`, so backfilling with a future timestamp cannot push live UUIDs ahead of the wall clock. It panics for times outside the 48-bit range (before 1970 or after roughly the year 10889); a zero `time.Time` is out of range, so an uninitialized field fails loudly instead of producing a silently wrong key.
 
 ## High-Throughput Generation
 
@@ -41,8 +41,8 @@ id  = pool.NewV7() // ~2x faster than NewV7() (time.Now dominates)
 For bulk workloads (database seeding, ETL, load testing), batch APIs generate many UUIDs with a single `crypto/rand` call:
 
 ```go
-ids := uuid.NewV4Batch(1000) // ~25x faster than calling NewV4() in a loop
-ids  = uuid.NewV7Batch(1000) // ~13x faster, all monotonically increasing
+ids := uuid.NewV4Batch(1000) // ~40x faster than calling NewV4() in a loop
+ids  = uuid.NewV7Batch(1000) // ~20x faster, all monotonically increasing
 ```
 
 `uuid.NewV7Batch` uses the package-level default generator; call `NewV7Batch` on a dedicated `Generator` for isolated monotonicity guarantees.
@@ -59,11 +59,11 @@ id := uuid.NewV7()
 id.Version()  // uuid.V7
 id.Variant()  // uuid.VariantRFC9562
 id.IsNil()    // false
-id.Time()     // (time.Time, bool): millisecond precision; ok is false for non-V7
+id.Time()     // (time.Time, bool): millisecond precision; ok is false unless an RFC 9562 V7
 id.Bytes()    // []byte copy of the 16 raw bytes
 ```
 
-`Compare(a, b UUID) int` returns -1, 0, or +1 for use with `slices.SortFunc`:
+`Compare(a, b UUID) int` returns -1, 0, or +1 for use with `slices.SortFunc`; `a.Compare(b)` is the same comparison as a method, matching the standard library:
 
 ```go
 slices.SortFunc(ids, uuid.Compare)
@@ -71,7 +71,7 @@ slices.SortFunc(ids, uuid.Compare)
 
 ## SQL: BINARY(16) Columns
 
-`Value` returns the 36-character string, which is what native `uuid` column types (PostgreSQL, SQLite, CockroachDB) expect. MySQL and MariaDB have no native type and conventionally store UUIDs in `BINARY(16)`. `Scan` already accepts 16 raw bytes, so only `Value` needs to change. Wrap the type:
+`Value` returns the 36-character string, which is what native `uuid` column types (PostgreSQL, CockroachDB, MariaDB 10.7+) and text columns (SQLite, which has no UUID type) expect. MySQL has no UUID type and conventionally stores UUIDs in `BINARY(16)`, as do many MariaDB schemas that predate its `UUID` type. `Scan` already accepts 16 raw bytes delivered as `[]byte`, which is how drivers return binary columns, so only `Value` needs to change. (A `string` is always parsed as text, so a 16-character value from a text column is rejected rather than misread as raw bytes.) Wrap the type:
 
 ```go
 type BinaryUUID struct{ uuid.UUID }

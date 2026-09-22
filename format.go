@@ -49,17 +49,25 @@ func (u UUID) MarshalText() ([]byte, error) {
 }
 
 // UnmarshalText parses a UUID from text (strict 36-char format).
-// It implements [encoding.TextUnmarshaler].
+// It implements [encoding.TextUnmarshaler]. On error, u is left unchanged.
 func (u *UUID) UnmarshalText(data []byte) error {
 	if len(data) != 36 {
 		return &ParseError{Input: errInputBytes(data), Msg: "expected 36-character hyphenated format"}
 	}
 	if data[8] != '-' || data[13] != '-' || data[18] != '-' || data[23] != '-' {
-		return &ParseError{Input: string(data), Msg: "expected hyphens at positions 8, 13, 18, 23"}
+		return hyphenError(string(data), 0)
 	}
-	if !parseHexBytes(u, data, 0) {
-		return &ParseError{Input: string(data), Msg: "invalid hex character"}
+	// Decode into a local so a failure part-way through cannot leave *u
+	// half-overwritten.
+	var id UUID
+	for i, x := range hexOffsets {
+		v, ok := xtob(data[x], data[x+1])
+		if !ok {
+			return hexError(string(data), x)
+		}
+		id[i] = v
 	}
+	*u = id
 	return nil
 }
 
@@ -124,18 +132,19 @@ func encodeHex(dst []byte, u UUID) {
 }
 
 // Scan implements [database/sql.Scanner]. It supports scanning from:
-//   - string: 16 raw bytes (e.g. a BINARY(16) column delivered as string)
-//     or text form parsed with [ParseLenient]
-//   - []byte: 16 raw bytes or text form parsed with [ParseLenient]
+//   - string: text form parsed with [ParseLenient]
+//   - []byte: 16 raw bytes (a BINARY(16) column), otherwise text form
+//     parsed with [ParseLenient]
+//
+// A string is always parsed as text, so a 16-character value from a text
+// column is rejected rather than silently read as raw bytes. Drivers deliver
+// binary columns as []byte, which is the only source of raw bytes.
 //
 // Scanning SQL NULL is an error; use *UUID (nil pointer = NULL) instead.
+// On error, u is left unchanged.
 func (u *UUID) Scan(src any) error {
 	switch v := src.(type) {
 	case string:
-		if len(v) == 16 {
-			copy(u[:], v)
-			return nil
-		}
 		parsed, err := ParseLenient(v)
 		if err != nil {
 			return err
@@ -165,7 +174,8 @@ func (u *UUID) Scan(src any) error {
 
 // Value implements [database/sql/driver.Valuer].
 // It returns the UUID as a 36-character string, which suits native uuid
-// column types (PostgreSQL, SQLite, CockroachDB). For BINARY(16) columns,
+// column types (PostgreSQL, CockroachDB, MariaDB 10.7+) and text columns
+// (SQLite has no UUID type). For BINARY(16) columns,
 // wrap the type and return the raw bytes instead; see the
 // [UUID.Value] example. [UUID.Scan] already accepts 16 raw bytes.
 func (u UUID) Value() (driver.Value, error) {

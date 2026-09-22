@@ -49,18 +49,18 @@ if seq <= g.lastSeq {
 g.lastSeq = seq
 ```
 
-The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >> 12`), so the counter can overflow into the next millisecond transparently. This means a single `Generator` can produce up to 4096 monotonically ordered UUIDs per millisecond before the timestamp advances - and continues seamlessly beyond that.
+The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >> 12`), so the counter can overflow into the next millisecond transparently. The counter starts from the current sub-millisecond fraction, so a burst can take at most 4096 - `frac` values before it carries into the next millisecond; ordering continues seamlessly past that. The cost is that the encoded timestamp then runs ahead of the wall clock until real time catches up, which is why `UUID.Time` may report a slightly later time under sustained bursts.
 
 ## Pool: Amortizing crypto/rand
 
-`crypto/rand` is the dominant cost in UUID generation (~230ns per V4 call). `Pool` reduces this by pre-generating random bytes in bulk:
+`crypto/rand` is the dominant cost in UUID generation (~240ns per V4 call). `Pool` reduces this by pre-generating random bytes in bulk:
 
 - **V4 pool**: Pre-stamps 256 complete UUIDs per refill (one `crypto/rand.Read` of 4KB). Each `Pool.NewV4()` call just returns the next pre-built UUID.
 - **V7 pool**: Pre-generates 256 x 8-byte random chunks for `rand_b`. Timestamp and sub-ms sequence are computed live per call (they can't be pre-computed). This is why V7 pooling gives ~2x improvement vs V4's ~14x - `time.Now` is the remaining bottleneck.
 
 ## Batch: Bulk Generation
 
-`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~25x (V4) and ~13x (V7) speedups over calling the single-UUID functions in a loop.
+`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~30x (V4) and ~13x (V7) speedups at n=100 over calling the single-UUID functions in a loop, growing with n (~40x and ~20x at n=1000).
 
 ## V5: Zero-Alloc Hashing
 
@@ -74,4 +74,4 @@ This replaced an earlier `hash.Cloner` approach that pre-hashed the namespace: s
 
 ## Parse: Lookup Table
 
-Parsing uses a 256-byte hex lookup table that maps each byte value to its hex digit (or `0xFF` for invalid). Combined with a pre-computed offset array for the 32 hex character positions in `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`, this avoids branching and produces a zero-allocation parser.
+Parsing uses a 256-byte hex lookup table that maps each byte value to its hex digit (or `0xFF` for invalid). Combined with a pre-computed array of the offsets of the 16 hex digit pairs in `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`, this replaces per-character range comparisons with a single table lookup and produces a zero-allocation parser.

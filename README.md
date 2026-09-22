@@ -5,7 +5,7 @@
 
 # uuid
 
-A modern, zero-alloc, zero-dependency Go UUID library implementing [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562). Built for Go 1.27+ with first-class support for V7 timestamp-ordered UUIDs, pooled generation, and batch APIs.
+A modern, zero-dependency Go UUID library with zero-alloc hot paths, implementing [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562). Built for Go 1.27+ with first-class support for V7 timestamp-ordered UUIDs, pooled generation, and batch APIs.
 
 ```
 go get github.com/pscheid92/uuid
@@ -95,7 +95,7 @@ var id uuid.UUID
 err := row.Scan(&id)
 ```
 
-UUIDs are sortable via `uuid.Compare`:
+UUIDs are sortable via `uuid.Compare` (or the `Compare` method, as in the standard library):
 
 ```go
 slices.SortFunc(ids, uuid.Compare)
@@ -120,10 +120,10 @@ Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and 
 
 - **Everything the standard library leaves out**: V5 and V8, `Version`/`Variant`/`Time` accessors, strict `Parse`, typed `ParseError` with the offending input, binary marshaling, `database/sql` `Scan`/`Value`, per-instance `Generator` monotonicity, `NewV7At` for backfilling, and the `Pool` and `Batch` high-throughput paths. Convert between the two types for free (see [Standard Library Interop](#standard-library-interop)).
 
-- **Zero allocations**: NewV4, NewV5, NewV7, Parse, MarshalText, and UnmarshalText all allocate nothing. Other libraries allocate at least once per call.
-- **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~25x faster bulk V4) amortize `crypto/rand` cost. No equivalent exists in other libraries.
+- **Zero allocations**: NewV4, NewV5, NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5, and google/uuid on every one unless its V4 pool is enabled.
+- **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~30x faster bulk V4, ~13x bulk V7 at n=100) amortize `crypto/rand` cost. google/uuid can pool V4 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating); no other library pools V7 or generates in batches.
 - **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
-- **No global mutable state**: No `SetRand`, no global clock. V4/V5/V8 are pure functions. V7 monotonicity is scoped to a `Generator` instance.
+- **No global configuration**: No `SetRand`, no swappable clock or random source. V4/V5/V8 are stateless. V7 monotonicity lives in a `Generator`: the package-level `NewV7` uses a shared default one (like `http.DefaultClient`), and you can create your own for isolated ordering.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
 - **Simple value type**: `UUID` is `[16]byte`: comparable, copyable, safe as map key. No `NullUUID` - use `*UUID` for nullable SQL/JSON fields.
 - **Modern Go, zero dependencies**: Targets Go 1.27+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `testing/synctest`. Only stdlib. No legacy baggage, no V1/V2/V3/V6.
@@ -135,23 +135,25 @@ Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and 
 
 ## Benchmarks
 
-All generation and formatting hot paths are zero-alloc. Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://github.com/google/uuid), and [gofrs/uuid](https://github.com/gofrs/uuid) on Apple M2:
+Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://github.com/google/uuid), and [gofrs/uuid](https://github.com/gofrs/uuid) on Apple M2 (fastest of 8–12 runs; the fastest entry per row is bold):
 
 | Benchmark | pscheid92/uuid | stdlib (Go 1.27) | google/uuid | gofrs/uuid |
 |-----------|---------------|------------------|-------------|------------|
-| NewV4 | **239 ns** | 237 ns | 250 ns | 245 ns |
-| NewV4 (Pool) | **17 ns** | - | - | - |
-| NewV4Batch(100) | **752 ns** | - | 24,951 ns | 24,559 ns |
-| NewV5 | **63 ns** | - | 100 ns | 61 ns |
-| NewV7 | **104 ns** | 102 ns | 297 ns | 119 ns |
-| NewV7 (Pool) | **47 ns** | - | - | - |
-| NewV7Batch(100) | **787 ns** | - | 29,748 ns | 11,797 ns |
+| NewV4 | 240 ns | **237 ns** | 248 ns | 243 ns |
+| NewV4 (Pool) | **16 ns** | - | 29 ns¹ | - |
+| NewV4Batch(100) | **752 ns** | - | 24,910 ns² | 24,538 ns² |
+| NewV5 | 63 ns | - | 100 ns | **62 ns** |
+| NewV7 | 104 ns | **101 ns** | 296 ns | 117 ns |
+| NewV7 (Pool) | **45 ns** | - | - | - |
+| NewV7Batch(100) | **778 ns** | - | 29,768 ns² | 11,615 ns² |
 | Parse | **18 ns** | 25 ns | 19 ns | 27 ns |
 | UnmarshalText | **18 ns** | 25 ns | 19 ns | 27 ns |
-| String | **20 ns** | 30 ns | 27 ns | 24 ns |
-| MarshalText | **11 ns** | 20 ns | 18 ns | 22 ns |
+| String | **20 ns** | 29 ns | 26 ns | 24 ns |
+| MarshalText | **17 ns** | 27 ns | 24 ns | 21 ns |
 
-All entries for this library and the standard library are zero-alloc except String, which allocates its result. Generation is at parity with the standard library since both read `crypto/rand` the same way; the text paths are 25–45% faster here thanks to lookup-table parsing and an unrolled encoder. google/uuid allocates on every generation call; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
+¹ With `google.EnableRandPool()`. ² No batch API; the benchmark makes 100 single calls.
+
+All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. Single-call generation is at parity with the standard library and gofrs/uuid (differences of a few ns are run-to-run noise), since all of them read `crypto/rand` the same way. The text paths take 25–40% less time than the standard library's thanks to lookup-table parsing and an unrolled encoder; google/uuid's parser is within a few percent. google/uuid allocates on every generation call unless its pool is enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
 
 ```bash
 cd bench && go test -bench=. -benchmem ./...

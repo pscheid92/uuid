@@ -101,14 +101,13 @@ func BenchmarkNewV4Pool(b *testing.B) {
 			pool.NewV4()
 		}
 	})
+	// google/uuid pools V4 randomness behind a global, non-thread-safe
+	// toggle. gofrs/uuid and the standard library have no pool.
 	b.Run("google", func(b *testing.B) {
+		google.EnableRandPool()
+		defer google.DisableRandPool()
 		for b.Loop() {
 			google.New()
-		}
-	})
-	b.Run("gofrs", func(b *testing.B) {
-		for b.Loop() {
-			gofrs.NewV4()
 		}
 	})
 }
@@ -117,21 +116,13 @@ func BenchmarkNewV4Pool(b *testing.B) {
 // V7 pool generation (per-call amortized)
 // ---------------------------------------------------------------------------
 
+// No other library pools V7 generation; see BenchmarkNewV7 for their
+// single-call cost.
 func BenchmarkNewV7Pool(b *testing.B) {
 	b.Run("pscheid92", func(b *testing.B) {
 		pool := pscheid.NewPool()
 		for b.Loop() {
 			pool.NewV7()
-		}
-	})
-	b.Run("google", func(b *testing.B) {
-		for b.Loop() {
-			google.NewV7()
-		}
-	})
-	b.Run("gofrs", func(b *testing.B) {
-		for b.Loop() {
-			gofrs.NewV7()
 		}
 	})
 }
@@ -249,29 +240,34 @@ func BenchmarkString(b *testing.B) {
 // MarshalText
 // ---------------------------------------------------------------------------
 
+// byteSink keeps marshaled results alive. Discarding them lets the compiler
+// inline MarshalText/MarshalBinary and keep the buffer on the stack, which
+// reports an allocation cost no real caller sees.
+var byteSink []byte
+
 func BenchmarkMarshalText(b *testing.B) {
 	b.Run("pscheid92", func(b *testing.B) {
 		u := pscheid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 		for b.Loop() {
-			u.MarshalText()
+			byteSink, _ = u.MarshalText()
 		}
 	})
 	b.Run("google", func(b *testing.B) {
 		u := google.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 		for b.Loop() {
-			u.MarshalText()
+			byteSink, _ = u.MarshalText()
 		}
 	})
 	b.Run("gofrs", func(b *testing.B) {
 		u := gofrs.Must(gofrs.FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
 		for b.Loop() {
-			u.MarshalText()
+			byteSink, _ = u.MarshalText()
 		}
 	})
 	b.Run("stdlib", func(b *testing.B) {
 		u := stdlib.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 		for b.Loop() {
-			u.MarshalText()
+			byteSink, _ = u.MarshalText()
 		}
 	})
 }
@@ -317,19 +313,19 @@ func BenchmarkMarshalBinary(b *testing.B) {
 	b.Run("pscheid92", func(b *testing.B) {
 		u := pscheid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 		for b.Loop() {
-			u.MarshalBinary()
+			byteSink, _ = u.MarshalBinary()
 		}
 	})
 	b.Run("google", func(b *testing.B) {
 		u := google.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 		for b.Loop() {
-			u.MarshalBinary()
+			byteSink, _ = u.MarshalBinary()
 		}
 	})
 	b.Run("gofrs", func(b *testing.B) {
 		u := gofrs.Must(gofrs.FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
 		for b.Loop() {
-			u.MarshalBinary()
+			byteSink, _ = u.MarshalBinary()
 		}
 	})
 }

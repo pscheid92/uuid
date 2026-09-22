@@ -10,7 +10,7 @@ import (
 )
 
 // NewV4 returns a new random (Version 4) UUID.
-// It reads from crypto/rand which cannot fail on Go 1.26+.
+// It reads from crypto/rand, which cannot fail since Go 1.24.
 func NewV4() UUID {
 	var u UUID
 	_, _ = rand.Read(u[:])
@@ -143,21 +143,22 @@ func (p *Pool) NewV4() UUID {
 // [NewV7] generator and of every other Pool or [Generator]. UUIDs drawn from
 // different sources are not ordered relative to each other.
 func (p *Pool) NewV7() UUID {
-	p.mu.Lock()
-	if p.v7left == 0 {
-		p.refillV7()
-	}
-
-	var u UUID
-	off := (poolSize - p.v7left) * 8
-	copy(u[8:], p.v7rand[off:off+8])
-	p.v7left--
-
+	// Read the clock before taking the lock, as Generator.NewV7 does, so
+	// concurrent callers do not serialize on time.Now.
 	now := time.Now()
 	nano := now.UnixNano()
 	ms := nano / nanoPerMilli
 	frac := (nano % nanoPerMilli) * 4096 / nanoPerMilli
 	seq := ms<<12 | frac
+
+	var u UUID
+	p.mu.Lock()
+	if p.v7left == 0 {
+		p.refillV7()
+	}
+	off := (poolSize - p.v7left) * 8
+	copy(u[8:], p.v7rand[off:off+8])
+	p.v7left--
 
 	if seq <= p.v7seq {
 		seq = p.v7seq + 1
@@ -205,7 +206,7 @@ const maxV7Millis = 1 << 48
 // calls with the same t tie on their first 8 bytes and are ordered only by
 // that random tail.
 //
-// NewV7At is a pure function: it neither reads nor advances the monotonic
+// NewV7At is stateless: it neither reads nor advances the monotonic
 // state of any [Generator] or [Pool], so backfilling never pushes live
 // UUIDs ahead of the wall clock.
 //
@@ -254,6 +255,8 @@ func NewV7Batch(n int) []UUID {
 
 // Generator produces Version 7 UUIDs with per-instance monotonicity.
 // Multiple goroutines may safely call NewV7 concurrently on the same Generator.
+//
+// The zero value is ready to use; [NewGenerator] is equivalent to &Generator{}.
 type Generator struct {
 	mu      sync.Mutex
 	lastSeq int64 // ms<<12 | seq for monotonicity
