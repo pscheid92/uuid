@@ -9,9 +9,7 @@ go test ./...                           # run all tests
 go test -race ./...                     # run with race detector
 go vet ./...                            # static analysis
 go test -bench=. -benchmem ./...        # benchmarks with alloc stats
-go test -fuzz='^FuzzParse$' -fuzztime=30s ./...       # fuzz Parse
-go test -fuzz=FuzzParseLenient -fuzztime=30s ./...    # fuzz ParseLenient
-go test -fuzz=FuzzDecodersAgree -fuzztime=30s ./...   # cross-check Parse/UnmarshalText/ParseLenient/Scan
+go test -fuzz=FuzzDecodersAgree -fuzztime=30s ./...   # fuzz all decoders: agreement + round-trip
 cd bench && go test -bench=. -benchmem ./...          # comparison benchmarks vs stdlib uuid, google/uuid, gofrs/uuid
 ```
 
@@ -55,5 +53,6 @@ V4 (random), V5 (SHA-1 name-based), V7 (timestamp+random), V8 (custom). No V1/V2
 - Tests are internal (package `uuid`) except `example_test.go` (package `uuid_test`)
 - Use `cryptotest.SetGlobalRandom(t, seed)` for deterministic randomness
 - Use `synctest.Test(t, func(t *testing.T) { ... })` for fake-clock V7 tests
+- V7 behaviour tests run against every source via `v7Sources()` (Generator, zero-value Generator, NewV7Batch, Pool, zero-value Pool); add new V7 paths there
 - Fuzz tests must round-trip: parse then re-parse the String() output
 - Decoders never write through the receiver on error: decode into a local, assign on success

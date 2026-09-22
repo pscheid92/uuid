@@ -42,14 +42,8 @@ jobs:
             exit 1
           fi
 
-      - name: Fuzz Parse
-        run: go test -fuzz='^FuzzParse$' -fuzztime=10s ./...
-
-      - name: Fuzz ParseLenient
-        run: go test -fuzz=FuzzParseLenient -fuzztime=10s ./...
-
-      - name: Fuzz decoders agree
-        run: go test -fuzz=FuzzDecodersAgree -fuzztime=10s ./...
+      - name: Fuzz decoders
+        run: go test -fuzz=FuzzDecodersAgree -fuzztime=30s ./...
 
   lint:
     runs-on: ubuntu-latest
