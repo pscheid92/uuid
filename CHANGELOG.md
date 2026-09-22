@@ -7,25 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-22
+
 ### Changed
 
-- **Breaking:** `Scan` always parses a `string` as text. Previously any 16-character string was read as raw bytes, so a 16-character value from a text column (e.g. `"not a uuid at al"`) scanned without error into a garbage UUID. Raw bytes are still accepted as a 16-byte `[]byte`, which is how drivers deliver `BINARY(16)` columns.
+- **Breaking:** `Scan` always parses a `string` as text. Previously any 16-character string was read as raw bytes, so a 16-character value from a text column (e.g. `"not a uuid at al"`) scanned without error into a garbage UUID. Raw bytes are still accepted as a 16-byte `[]byte`, which is how drivers deliver `BINARY(16)` columns. If your driver returns a binary column as a `string`, scan it into a `[]byte` (`database/sql` converts it) and pass that to `FromBytes`.
 - `UUID.Time()` also requires the RFC 9562 variant. The version field is only defined for that variant, so a Microsoft GUID whose version bits happen to read 7 no longer decodes to a made-up timestamp.
-- Parse errors report the exact failing position relative to the full input (`expected '-' at position 32`, `invalid hex character at position 35`). URN and braced inputs previously listed hyphen positions 8, 13, 18, 23 of the inner 36 characters.
-- `Pool.NewV7` reads the clock before taking its lock, as `Generator.NewV7` does (~10% faster under contention).
-- README: `MarshalText` is no longer listed as zero-alloc. It must return a fresh slice and allocates once whenever the result is used; the benchmarks discarded the result, which let the compiler stack-allocate it. The comparison benchmarks now keep the result for every library, and the README table is updated.
-- Documentation corrections after re-running all benchmarks:
-  - README benchmark table re-measured; bold now marks the fastest entry per row instead of every entry in this library's column (the standard library is marginally faster at NewV4 and NewV7, gofrs/uuid at NewV5)
-  - google/uuid does offer a V4/V7 pool (`EnableRandPool`): the comparison benchmarks now enable it instead of measuring plain `google.New()` under a pool label, and the README no longer claims no other library has an equivalent
-  - Batch speedups corrected: ~30x for V4 at n=100 (was ~25x); ~40x (V4) and ~20x (V7) at n=1000 in the advanced docs (were ~25x and ~13x)
+- Parse errors report the exact failing position relative to the full input, as a byte offset (`expected '-' at position 32`, `invalid hex character at position 35`). URN and braced inputs previously listed hyphen positions 8, 13, 18, 23 of the inner 36 characters. If you match on `ParseError.Msg` text, update the expected strings; `Input` is unchanged.
+- `Pool.NewV7` reads the clock before taking its lock, as `Generator.NewV7` does (~10% faster under contention)
+- Documentation corrected after re-running every benchmark:
+  - `MarshalText` is no longer listed as zero-alloc: it must return a fresh slice and allocates once whenever the result is used. The benchmarks had discarded the result, letting the compiler stack-allocate it; they now keep it for every library.
+  - README benchmark table re-measured; bold marks the fastest entry per row (the standard library is marginally faster at `NewV4` and `NewV7`, gofrs/uuid at `NewV5`)
+  - google/uuid does offer a V4/V7 pool (`EnableRandPool`); the comparison benchmarks now enable it, and the README no longer claims no other library has an equivalent
+  - Batch speedups corrected: ~30x for V4 at n=100 (was ~25x); ~40x (V4) and ~20x (V7) at n=1000 (were ~25x and ~13x)
   - "No global mutable state" reworded: the package-level `NewV7` uses a shared default `Generator`
-  - `crypto/rand` became infallible in Go 1.24, not 1.26
-  - SQLite has no native UUID type, and MariaDB has had one since 10.7
-  - Internals: V7 counter bursts carry into the millisecond field after 4096 - `frac` values, not a fixed 4096, and push the encoded time ahead of the wall clock
-- Internal: the V7 generators share inlinable helpers for the clock-to-ordering-value conversion, the monotonic step, and the byte encoding, instead of four hand-copied versions; all generators share one version/variant stamp instead of nine copies. No behavior change; performance is unchanged within noise.
-- `FuzzParse` and `FuzzParseLenient` are folded into `FuzzDecodersAgree`, which now also round-trips every input `ParseLenient` accepts; CI runs one 30s fuzz step instead of three 10s steps
-- Sixteen per-generator V7 tests are replaced by the table-driven tests over every V7 source, which check the same properties more strictly; concurrent uniqueness and mixing `NewV7Batch` with `NewV7` on one generator move into the table
-- Internal: `Scan` parses text in one place for both `string` and `[]byte`; `MarshalBinary` and `UnmarshalBinary` reuse `Bytes` and `FromBytes`. No behavior change
+  - `crypto/rand` became infallible in Go 1.24, not 1.26; SQLite has no native UUID type, and MariaDB has had one since 10.7
+  - Internals: a V7 counter burst carries into the millisecond field after 4096 - `frac` values, not a fixed 4096, and pushes the encoded time ahead of the wall clock
+- Internal, no behavior change:
+  - The V7 generators share inlinable helpers for the clock-to-ordering-value conversion, the monotonic step, and the byte encoding, instead of four hand-copied versions; all generators share one version/variant stamp instead of nine copies. Performance is unchanged within noise.
+  - `Scan` parses text in one place for both `string` and `[]byte`; `MarshalBinary` and `UnmarshalBinary` reuse `Bytes` and `FromBytes`
+  - Per-generator V7 tests are replaced by table-driven tests over every V7 source (`Generator`, zero-value `Generator`, `NewV7Batch`, `Pool`, zero-value `Pool`), which also cover what the counter previously never saw: a burst that carries into the next millisecond, a clock that steps back, concurrent draws, and mixing `NewV7Batch` with `NewV7`
+  - `FuzzParse` and `FuzzParseLenient` are folded into `FuzzDecodersAgree`, which cross-checks `Parse`, `UnmarshalText`, every `ParseLenient` form, and `Scan` (`string` and `[]byte`) for identical results and errors, and round-trips everything `ParseLenient` accepts. CI runs one 30s fuzz step.
+  - Zero-alloc tests now also cover `Parse`, `ParseLenient` (all forms), `UnmarshalText`, and `AppendText`
 
 ### Fixed
 
@@ -34,10 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `UUID.Compare` method, matching the standard library `uuid` package; the package-level `Compare` remains
-- `FuzzDecodersAgree` cross-checks `Parse`, `UnmarshalText`, every `ParseLenient` form, and `Scan` (string and []byte) for identical results and errors; CI runs it
-- Zero-alloc tests for `Parse`, `ParseLenient` (all forms), `UnmarshalText`, and `AppendText`
 - Documented that the `Generator` zero value is ready to use, and that `Nil`, `Max`, and the namespace values must be treated as read-only
-- Tests for the V7 monotonic counter's edge cases, run against every V7 source (`Generator`, zero-value `Generator`, `NewV7Batch`, `Pool`, zero-value `Pool`): a burst that carries into the next millisecond, and a clock that steps back. Previously the counter was only exercised with three UUIDs.
 
 ## [0.5.0] - 2026-09-20
 
@@ -132,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-alloc hot paths for NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, MarshalText, UnmarshalText
 - 100% test coverage including fuzz tests
 
-[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/pscheid92/uuid/releases/tag/v0.6.0
 [0.5.0]: https://github.com/pscheid92/uuid/releases/tag/v0.5.0
 [0.4.0]: https://github.com/pscheid92/uuid/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pscheid92/uuid/releases/tag/v0.3.0
