@@ -2,6 +2,7 @@ package uuid
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"slices"
 )
@@ -74,18 +75,17 @@ func (u *UUID) UnmarshalText(data []byte) error {
 // MarshalBinary returns the raw 16-byte representation.
 // It implements [encoding.BinaryMarshaler].
 func (u UUID) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 16)
-	copy(b, u[:])
-	return b, nil
+	return u.Bytes(), nil
 }
 
-// UnmarshalBinary sets u from a 16-byte slice.
-// It implements [encoding.BinaryUnmarshaler].
+// UnmarshalBinary sets u from a 16-byte slice, as [FromBytes] does.
+// It implements [encoding.BinaryUnmarshaler]. On error, u is left unchanged.
 func (u *UUID) UnmarshalBinary(data []byte) error {
-	if len(data) != 16 {
-		return &LengthError{Got: len(data), Want: "16 bytes"}
+	id, err := FromBytes(data)
+	if err != nil {
+		return err
 	}
-	copy(u[:], data)
+	*u = id
 	return nil
 }
 
@@ -143,33 +143,28 @@ func encodeHex(dst []byte, u UUID) {
 // Scanning SQL NULL is an error; use *UUID (nil pointer = NULL) instead.
 // On error, u is left unchanged.
 func (u *UUID) Scan(src any) error {
+	var text string
 	switch v := src.(type) {
 	case string:
-		parsed, err := ParseLenient(v)
-		if err != nil {
-			return err
-		}
-		*u = parsed
-		return nil
-
+		text = v
 	case []byte:
 		if len(v) == 16 {
-			copy(u[:], v)
+			*u = UUID(v)
 			return nil
 		}
-		parsed, err := ParseLenient(string(v))
-		if err != nil {
-			return err
-		}
-		*u = parsed
-		return nil
-
+		text = string(v)
 	case nil:
-		return fmt.Errorf("uuid: cannot scan NULL into UUID; use *UUID for nullable columns")
-
+		return errors.New("uuid: cannot scan NULL into UUID; use *UUID for nullable columns")
 	default:
 		return fmt.Errorf("uuid: cannot scan %T into UUID", src)
 	}
+
+	parsed, err := ParseLenient(text)
+	if err != nil {
+		return err
+	}
+	*u = parsed
+	return nil
 }
 
 // Value implements [database/sql/driver.Valuer].

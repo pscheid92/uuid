@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Internals: V7 counter bursts carry into the millisecond field after 4096 - `frac` values, not a fixed 4096, and push the encoded time ahead of the wall clock
 - Internal: the V7 generators share inlinable helpers for the clock-to-ordering-value conversion, the monotonic step, and the byte encoding, instead of four hand-copied versions; all generators share one version/variant stamp instead of nine copies. No behavior change; performance is unchanged within noise.
 - `FuzzParse` and `FuzzParseLenient` are folded into `FuzzDecodersAgree`, which now also round-trips every input `ParseLenient` accepts; CI runs one 30s fuzz step instead of three 10s steps
+- Sixteen per-generator V7 tests are replaced by the table-driven tests over every V7 source, which check the same properties more strictly; concurrent uniqueness and mixing `NewV7Batch` with `NewV7` on one generator move into the table
+- Internal: `Scan` parses text in one place for both `string` and `[]byte`; `MarshalBinary` and `UnmarshalBinary` reuse `Bytes` and `FromBytes`. No behavior change
 
 ### Fixed
 

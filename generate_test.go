@@ -161,57 +161,6 @@ func TestPoolNewV4ConcurrentSafety(t *testing.T) {
 	}
 }
 
-func TestPoolNewV7(t *testing.T) {
-	pool := NewPool()
-	seen := make(map[UUID]bool, 1000)
-	for range 1000 {
-		u := pool.NewV7()
-		if u.Version() != V7 {
-			t.Errorf("Pool.NewV7().Version() = %v, want V7", u.Version())
-		}
-		if u.Variant() != VariantRFC9562 {
-			t.Errorf("Pool.NewV7().Variant() = %v, want RFC9562", u.Variant())
-		}
-		if seen[u] {
-			t.Fatalf("duplicate UUID from pool V7: %s", u)
-		}
-		seen[u] = true
-	}
-}
-
-func TestPoolNewV7Monotonic(t *testing.T) {
-	pool := NewPool()
-	prev := pool.NewV7()
-	for range 100 {
-		curr := pool.NewV7()
-		if Compare(curr, prev) <= 0 {
-			t.Fatalf("Pool V7 not monotonic: %s <= %s", curr, prev)
-		}
-		prev = curr
-	}
-}
-
-func TestPoolNewV7ConcurrentSafety(t *testing.T) {
-	pool := NewPool()
-	const n = 500
-	results := make(chan UUID, n)
-
-	for range n {
-		go func() {
-			results <- pool.NewV7()
-		}()
-	}
-
-	seen := make(map[UUID]bool, n)
-	for range n {
-		u := <-results
-		if seen[u] {
-			t.Fatalf("duplicate UUID from concurrent pool V7: %s", u)
-		}
-		seen[u] = true
-	}
-}
-
 func TestNewV5(t *testing.T) {
 	// RFC 9562 Appendix B.2 test vector
 	u := NewV5(NamespaceDNS, "www.example.com")
@@ -335,104 +284,6 @@ func TestNewV8Deterministic(t *testing.T) {
 	}
 }
 
-func TestNewV7Version(t *testing.T) {
-	u := NewV7()
-	if u.Version() != V7 {
-		t.Errorf("NewV7().Version() = %v, want V7", u.Version())
-	}
-	if u.Variant() != VariantRFC9562 {
-		t.Errorf("NewV7().Variant() = %v, want RFC9562", u.Variant())
-	}
-}
-
-func TestNewV7Uniqueness(t *testing.T) {
-	seen := make(map[UUID]bool)
-	for range 1000 {
-		u := NewV7()
-		if seen[u] {
-			t.Fatalf("duplicate V7 UUID: %s", u)
-		}
-		seen[u] = true
-	}
-}
-
-func TestNewV7Monotonic(t *testing.T) {
-	gen := NewGenerator()
-	prev := gen.NewV7()
-	for range 100 {
-		curr := gen.NewV7()
-		if Compare(curr, prev) <= 0 {
-			t.Fatalf("V7 not monotonic: %s <= %s", curr, prev)
-		}
-		prev = curr
-	}
-}
-
-func TestNewV7MonotonicSameMillisecond(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		cryptotest.SetGlobalRandom(t, 99)
-
-		gen := NewGenerator()
-		// Generate multiple UUIDs without advancing time — all in same millisecond
-		a := gen.NewV7()
-		b := gen.NewV7()
-		c := gen.NewV7()
-
-		if Compare(a, b) >= 0 {
-			t.Errorf("expected a < b: %s >= %s", a, b)
-		}
-		if Compare(b, c) >= 0 {
-			t.Errorf("expected b < c: %s >= %s", b, c)
-		}
-
-		// Millisecond timestamps are the same (sub-ms ordering is in rand_a)
-		ta, _ := a.Time()
-		tb, _ := b.Time()
-		tc, _ := c.Time()
-		if !ta.Equal(tb) {
-			t.Errorf("expected same ms timestamp: a=%v, b=%v", ta, tb)
-		}
-		if !tb.Equal(tc) {
-			t.Errorf("expected same ms timestamp: b=%v, c=%v", tb, tc)
-		}
-	})
-}
-
-func TestNewV7TimestampAdvances(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		gen := NewGenerator()
-		a := gen.NewV7()
-
-		// Advance fake clock by 100ms
-		synctest.Sleep(100 * time.Millisecond)
-
-		b := gen.NewV7()
-		if Compare(b, a) <= 0 {
-			t.Errorf("V7 should be monotonic after time advance: %s <= %s", b, a)
-		}
-
-		ta, _ := a.Time()
-		tb, _ := b.Time()
-		diff := tb.Sub(ta)
-		if diff < 100*time.Millisecond {
-			t.Errorf("expected >= 100ms difference, got %v", diff)
-		}
-	})
-}
-
-func TestNewV7Sortable(t *testing.T) {
-	gen := NewGenerator()
-	uuids := make([]UUID, 100)
-	for i := range uuids {
-		uuids[i] = gen.NewV7()
-	}
-
-	sorted := slices.IsSortedFunc(uuids, Compare)
-	if !sorted {
-		t.Errorf("V7 UUIDs should be naturally sorted")
-	}
-}
-
 func TestNewV7GeneratorIsolation(t *testing.T) {
 	gen1 := NewGenerator()
 	gen2 := NewGenerator()
@@ -485,57 +336,6 @@ func TestNewV7BatchPackageLevel(t *testing.T) {
 	}
 }
 
-func TestNewV7ConcurrentSafety(t *testing.T) {
-	gen := NewGenerator()
-	const n = 100
-	results := make(chan UUID, n)
-
-	for range n {
-		go func() {
-			results <- gen.NewV7()
-		}()
-	}
-
-	seen := make(map[UUID]bool, n)
-	for range n {
-		u := <-results
-		if seen[u] {
-			t.Fatalf("duplicate UUID from concurrent generation: %s", u)
-		}
-		seen[u] = true
-	}
-}
-
-func TestNewV7Batch(t *testing.T) {
-	gen := NewGenerator()
-	uuids := gen.NewV7Batch(100)
-	if len(uuids) != 100 {
-		t.Fatalf("NewV7Batch(100) returned %d UUIDs", len(uuids))
-	}
-	seen := make(map[UUID]bool, 100)
-	for i, u := range uuids {
-		if u.Version() != V7 {
-			t.Errorf("uuids[%d].Version() = %v, want V7", i, u.Version())
-		}
-		if u.Variant() != VariantRFC9562 {
-			t.Errorf("uuids[%d].Variant() = %v, want RFC9562", i, u.Variant())
-		}
-		if seen[u] {
-			t.Fatalf("duplicate UUID in V7 batch at index %d: %s", i, u)
-		}
-		seen[u] = true
-	}
-}
-
-func TestNewV7BatchMonotonic(t *testing.T) {
-	gen := NewGenerator()
-	uuids := gen.NewV7Batch(100)
-
-	if !slices.IsSortedFunc(uuids, Compare) {
-		t.Errorf("V7 batch UUIDs should be monotonically increasing")
-	}
-}
-
 func TestNewV7BatchZero(t *testing.T) {
 	gen := NewGenerator()
 	uuids := gen.NewV7Batch(0)
@@ -549,62 +349,6 @@ func TestNewV7BatchNegative(t *testing.T) {
 	uuids := gen.NewV7Batch(-1)
 	if uuids != nil {
 		t.Fatalf("NewV7Batch(-1) = %v, want nil", uuids)
-	}
-}
-
-func TestNewV7BatchMonotonicAcrossCalls(t *testing.T) {
-	gen := NewGenerator()
-	batch1 := gen.NewV7Batch(10)
-	batch2 := gen.NewV7Batch(10)
-
-	lastOfBatch1 := batch1[len(batch1)-1]
-	firstOfBatch2 := batch2[0]
-	if Compare(firstOfBatch2, lastOfBatch1) <= 0 {
-		t.Errorf("batch2[0] should be > batch1[9]: %s <= %s", firstOfBatch2, lastOfBatch1)
-	}
-}
-
-func TestNewV7BatchMonotonicSameMillisecond(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		gen := NewGenerator()
-		// First call advances lastSeq
-		batch1 := gen.NewV7Batch(5)
-		// Second call at the same fake-clock time must hit the seq <= lastSeq fallback
-		batch2 := gen.NewV7Batch(5)
-
-		all := slices.Concat(batch1, batch2)
-		if !slices.IsSortedFunc(all, Compare) {
-			t.Errorf("V7 batches at same clock time should be monotonically increasing")
-		}
-	})
-}
-
-func TestPoolNewV7MonotonicSameMillisecond(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		pool := NewPool()
-		// Generate multiple UUIDs at the same fake-clock time
-		// to force the seq <= p.v7seq fallback branch
-		a := pool.NewV7()
-		b := pool.NewV7()
-		c := pool.NewV7()
-
-		if Compare(a, b) >= 0 {
-			t.Errorf("expected a < b: %s >= %s", a, b)
-		}
-		if Compare(b, c) >= 0 {
-			t.Errorf("expected b < c: %s >= %s", b, c)
-		}
-	})
-}
-
-func TestNewV7BatchInterleavedWithSingle(t *testing.T) {
-	gen := NewGenerator()
-	batch := gen.NewV7Batch(10)
-	single := gen.NewV7()
-
-	lastOfBatch := batch[len(batch)-1]
-	if Compare(single, lastOfBatch) <= 0 {
-		t.Errorf("single NewV7 should be > last batch UUID: %s <= %s", single, lastOfBatch)
 	}
 }
 
@@ -838,6 +582,50 @@ func TestV7ClockBehindLastValue(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestV7ConcurrentDrawsNeverShareAValue(t *testing.T) {
+	for _, src := range v7Sources() {
+		t.Run(src.name, func(t *testing.T) {
+			draw, _ := src.open()
+			const goroutines, perDraw = 50, 20
+			results := make(chan []UUID, goroutines)
+			for range goroutines {
+				go func() { results <- draw(perDraw) }()
+			}
+
+			// Concurrent callers are not ordered relative to each other, but
+			// each draw is, and no two UUIDs from one source may share an
+			// ordering value, which also makes them unique.
+			seen := make(map[int64]bool, goroutines*perDraw)
+			for range goroutines {
+				ids := <-results
+				if !slices.IsSortedFunc(ids, Compare) {
+					t.Errorf("a single draw is not ordered: %v", ids)
+				}
+				for _, u := range ids {
+					if seen[seqOf(u)] {
+						t.Fatalf("ordering value of %s handed out twice", u)
+					}
+					seen[seqOf(u)] = true
+				}
+			}
+		})
+	}
+}
+
+func TestV7BatchAndSingleShareOneCounter(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gen := NewGenerator()
+		start := wantSeq(time.Now())
+		ids := slices.Concat(
+			[]UUID{gen.NewV7()},
+			gen.NewV7Batch(5),
+			[]UUID{gen.NewV7()},
+			gen.NewV7Batch(3),
+		)
+		checkRun(t, ids, start)
+	})
 }
 
 // TestRandZeroAlloc enforces the zero-alloc guarantee for every generator
