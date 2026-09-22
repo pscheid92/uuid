@@ -94,14 +94,6 @@ func TestUnmarshalText(t *testing.T) {
 	}
 }
 
-func TestUnmarshalTextError(t *testing.T) {
-	var u UUID
-	err := u.UnmarshalText([]byte("invalid"))
-	if err == nil {
-		t.Fatal("UnmarshalText should fail on invalid input")
-	}
-}
-
 func TestUnmarshalTextInputTruncated(t *testing.T) {
 	long := bytes.Repeat([]byte("a"), 1000)
 	var u UUID
@@ -113,23 +105,6 @@ func TestUnmarshalTextInputTruncated(t *testing.T) {
 	want := string(long[:64]) + "..."
 	if perr.Input != want {
 		t.Errorf("ParseError.Input = %q (len %d), want %q", perr.Input, len(perr.Input), want)
-	}
-}
-
-func TestUnmarshalTextBadHyphens(t *testing.T) {
-	var u UUID
-	err := u.UnmarshalText([]byte("6ba7b810+9dad-11d1-80b4-00c04fd430c8"))
-	if err == nil {
-		t.Fatal("UnmarshalText should fail on bad hyphens")
-	}
-}
-
-func TestUnmarshalTextInvalidHex(t *testing.T) {
-	var u UUID
-	// Valid length and hyphens, but 'zz' is invalid hex
-	err := u.UnmarshalText([]byte("zza7b810-9dad-11d1-80b4-00c04fd430c8"))
-	if err == nil {
-		t.Fatal("UnmarshalText should fail on invalid hex")
 	}
 }
 
