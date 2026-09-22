@@ -12,11 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `Scan` always parses a `string` as text. Previously any 16-character string was read as raw bytes, so a 16-character value from a text column (e.g. `"not a uuid at al"`) scanned without error into a garbage UUID. Raw bytes are still accepted as a 16-byte `[]byte`, which is how drivers deliver `BINARY(16)` columns.
 - `UUID.Time()` also requires the RFC 9562 variant. The version field is only defined for that variant, so a Microsoft GUID whose version bits happen to read 7 no longer decodes to a made-up timestamp.
 - Parse errors report the exact failing position relative to the full input (`expected '-' at position 32`, `invalid hex character at position 35`). URN and braced inputs previously listed hyphen positions 8, 13, 18, 23 of the inner 36 characters.
-- `Pool.NewV7` reads the clock before taking its lock, as `Generator.NewV7` does (~10% faster under contention)
+- `Pool.NewV7` reads the clock before taking its lock, as `Generator.NewV7` does (~10% faster under contention).
 - README: `MarshalText` is no longer listed as zero-alloc. It must return a fresh slice and allocates once whenever the result is used; the benchmarks discarded the result, which let the compiler stack-allocate it. The comparison benchmarks now keep the result for every library, and the README table is updated.
 - Documentation corrections after re-running all benchmarks:
   - README benchmark table re-measured; bold now marks the fastest entry per row instead of every entry in this library's column (the standard library is marginally faster at NewV4 and NewV7, gofrs/uuid at NewV5)
-  - google/uuid does offer a V4 pool (`EnableRandPool`): the comparison benchmark now enables it (29 ns vs 16 ns for `Pool.NewV4`) instead of measuring plain `google.New()` under a pool label, and the README no longer claims no other library has an equivalent
+  - google/uuid does offer a V4/V7 pool (`EnableRandPool`): the comparison benchmarks now enable it instead of measuring plain `google.New()` under a pool label, and the README no longer claims no other library has an equivalent
   - Batch speedups corrected: ~30x for V4 at n=100 (was ~25x); ~40x (V4) and ~20x (V7) at n=1000 in the advanced docs (were ~25x and ~13x)
   - "No global mutable state" reworded: the package-level `NewV7` uses a shared default `Generator`
   - `crypto/rand` became infallible in Go 1.24, not 1.26
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `UUID.Compare` method, matching the standard library `uuid` package; the package-level `Compare` remains
-- `FuzzDecodersAgree` cross-checks `Parse`, `UnmarshalText`, every `ParseLenient` form, and `Scan` for identical results and errors; CI runs it
+- `FuzzDecodersAgree` cross-checks `Parse`, `UnmarshalText`, every `ParseLenient` form, and `Scan` (string and []byte) for identical results and errors; CI runs it
 - Zero-alloc tests for `Parse`, `ParseLenient` (all forms), `UnmarshalText`, and `AppendText`
 - Documented that the `Generator` zero value is ready to use, and that `Nil`, `Max`, and the namespace values must be treated as read-only
 

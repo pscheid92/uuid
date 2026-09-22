@@ -215,7 +215,7 @@ func errInputBytes(b []byte) string {
 //	}
 type ParseError struct {
 	Input string // the string that failed to parse, truncated to 64 bytes if longer
-	Msg   string // description of the problem
+	Msg   string // description of the problem; positions are byte offsets into Input
 }
 
 func (e *ParseError) Error() string {

@@ -101,7 +101,7 @@ func BenchmarkNewV4Pool(b *testing.B) {
 			pool.NewV4()
 		}
 	})
-	// google/uuid pools V4 randomness behind a global, non-thread-safe
+	// google/uuid pools V4 and V7 randomness behind a global, non-thread-safe
 	// toggle. gofrs/uuid and the standard library have no pool.
 	b.Run("google", func(b *testing.B) {
 		google.EnableRandPool()
@@ -116,13 +116,20 @@ func BenchmarkNewV4Pool(b *testing.B) {
 // V7 pool generation (per-call amortized)
 // ---------------------------------------------------------------------------
 
-// No other library pools V7 generation; see BenchmarkNewV7 for their
-// single-call cost.
 func BenchmarkNewV7Pool(b *testing.B) {
 	b.Run("pscheid92", func(b *testing.B) {
 		pool := pscheid.NewPool()
 		for b.Loop() {
 			pool.NewV7()
+		}
+	})
+	// google/uuid's NewV7 draws from the same pool as its V4 when
+	// EnableRandPool is on. gofrs/uuid and the standard library have no pool.
+	b.Run("google", func(b *testing.B) {
+		google.EnableRandPool()
+		defer google.DisableRandPool()
+		for b.Loop() {
+			google.NewV7()
 		}
 	})
 }

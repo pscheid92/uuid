@@ -120,8 +120,8 @@ Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and 
 
 - **Everything the standard library leaves out**: V5 and V8, `Version`/`Variant`/`Time` accessors, strict `Parse`, typed `ParseError` with the offending input, binary marshaling, `database/sql` `Scan`/`Value`, per-instance `Generator` monotonicity, `NewV7At` for backfilling, and the `Pool` and `Batch` high-throughput paths. Convert between the two types for free (see [Standard Library Interop](#standard-library-interop)).
 
-- **Zero allocations**: NewV4, NewV5, NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5, and google/uuid on every one unless its V4 pool is enabled.
-- **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~30x faster bulk V4, ~13x bulk V7 at n=100) amortize `crypto/rand` cost. google/uuid can pool V4 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating); no other library pools V7 or generates in batches.
+- **Zero allocations**: NewV4, NewV5 (names up to 240 bytes), NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5; google/uuid allocates on every one, except V4 and V7 when its pool is enabled.
+- **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~30x faster bulk V4, ~13x bulk V7 at n=100) amortize `crypto/rand` cost. google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating), ~1.6–1.8x slower than `Pool` here; no other library pools or generates in batches.
 - **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
 - **No global configuration**: No `SetRand`, no swappable clock or random source. V4/V5/V8 are stateless. V7 monotonicity lives in a `Generator`: the package-level `NewV7` uses a shared default one (like `http.DefaultClient`), and you can create your own for isolated ordering.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
@@ -144,16 +144,16 @@ Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://g
 | NewV4Batch(100) | **752 ns** | - | 24,910 ns² | 24,538 ns² |
 | NewV5 | 63 ns | - | 100 ns | **62 ns** |
 | NewV7 | 104 ns | **101 ns** | 296 ns | 117 ns |
-| NewV7 (Pool) | **45 ns** | - | - | - |
+| NewV7 (Pool) | **45 ns** | - | 73 ns¹ | - |
 | NewV7Batch(100) | **778 ns** | - | 29,768 ns² | 11,615 ns² |
 | Parse | **18 ns** | 25 ns | 19 ns | 27 ns |
 | UnmarshalText | **18 ns** | 25 ns | 19 ns | 27 ns |
 | String | **20 ns** | 29 ns | 26 ns | 24 ns |
 | MarshalText | **17 ns** | 27 ns | 24 ns | 21 ns |
 
-¹ With `google.EnableRandPool()`. ² No batch API; the benchmark makes 100 single calls.
+¹ With `google.EnableRandPool()`, which also removes the allocation. ² No batch API; the benchmark makes 100 single calls.
 
-All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. Single-call generation is at parity with the standard library and gofrs/uuid (differences of a few ns are run-to-run noise), since all of them read `crypto/rand` the same way. The text paths take 25–40% less time than the standard library's thanks to lookup-table parsing and an unrolled encoder; google/uuid's parser is within a few percent. google/uuid allocates on every generation call unless its pool is enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
+All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. Single-call generation is at parity with the standard library and gofrs/uuid (differences of a few ns are run-to-run noise), since all of them read `crypto/rand` the same way. The text paths take 25–40% less time than the standard library's thanks to lookup-table parsing and an unrolled encoder; google/uuid's parser is within a few percent. google/uuid allocates on every generation call, except V4 and V7 with its pool enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
 
 ```bash
 cd bench && go test -bench=. -benchmem ./...
