@@ -709,6 +709,137 @@ func TestNewV7AtOutOfRangePanics(t *testing.T) {
 	}
 }
 
+// seqOf decodes the 60-bit V7 ordering value, ms<<12 | rand_a, that the
+// monotonic counter increments.
+func seqOf(u UUID) int64 {
+	ms := int64(u[0])<<40 | int64(u[1])<<32 | int64(u[2])<<24 |
+		int64(u[3])<<16 | int64(u[4])<<8 | int64(u[5])
+	return ms<<12 | int64(u[6]&0x0f)<<8 | int64(u[7])
+}
+
+// wantSeq computes the ordering value for t straight from RFC 9562 Section
+// 6.2 Method 3, independently of the generators' own arithmetic.
+func wantSeq(t time.Time) int64 {
+	return t.UnixMilli()<<12 | int64(t.Nanosecond()%1_000_000)*4096/1_000_000
+}
+
+// v7Source is one way to draw V7 UUIDs from a single monotonic state.
+type v7Source struct {
+	name string
+	// open returns a draw function backed by fresh state, and a pointer to
+	// that state's last reserved ordering value.
+	open func() (draw func(n int) []UUID, last *int64)
+}
+
+func v7Sources() []v7Source {
+	loop := func(next func() UUID) func(n int) []UUID {
+		return func(n int) []UUID {
+			ids := make([]UUID, n)
+			for i := range ids {
+				ids[i] = next()
+			}
+			return ids
+		}
+	}
+	return []v7Source{
+		{"Generator", func() (func(int) []UUID, *int64) {
+			g := NewGenerator()
+			return loop(g.NewV7), &g.lastSeq
+		}},
+		{"zero-value Generator", func() (func(int) []UUID, *int64) {
+			var g Generator
+			return loop(g.NewV7), &g.lastSeq
+		}},
+		{"Generator.NewV7Batch", func() (func(int) []UUID, *int64) {
+			g := NewGenerator()
+			return g.NewV7Batch, &g.lastSeq
+		}},
+		{"Pool", func() (func(int) []UUID, *int64) {
+			p := NewPool()
+			return loop(p.NewV7), &p.v7seq
+		}},
+		{"zero-value Pool", func() (func(int) []UUID, *int64) {
+			var p Pool
+			return loop(p.NewV7), &p.v7seq
+		}},
+	}
+}
+
+// checkRun fails t unless ids are well-formed V7 UUIDs whose ordering values
+// run consecutively from start, which is what every source must produce
+// while the clock stands still.
+func checkRun(t *testing.T, ids []UUID, start int64) {
+	t.Helper()
+	for i, u := range ids {
+		if u.Version() != V7 || u.Variant() != VariantRFC9562 {
+			t.Fatalf("ids[%d] = %s: version %v, variant %v", i, u, u.Version(), u.Variant())
+		}
+		if got, want := seqOf(u), start+int64(i); got != want {
+			t.Fatalf("ids[%d] ordering value = %d, want %d (start + %d)", i, got, want, i)
+		}
+	}
+}
+
+func TestV7CounterCarriesIntoNextMillisecond(t *testing.T) {
+	for _, src := range v7Sources() {
+		t.Run(src.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				draw, _ := src.open()
+				now := time.Now()
+				start := wantSeq(now)
+
+				// With the clock frozen, 5000 UUIDs exceed the 4096 values
+				// one millisecond holds, so the counter must carry into the
+				// millisecond field while staying strictly ordered.
+				ids := draw(5000)
+				checkRun(t, ids, start)
+
+				carry := 4096 - int(start&0xFFF) // first index in the next millisecond
+				before, _ := ids[carry-1].Time()
+				after, _ := ids[carry].Time()
+				if ms := now.UnixMilli(); before.UnixMilli() != ms || after.UnixMilli() != ms+1 {
+					t.Errorf("carry at index %d: Time() = %d ms then %d ms, want %d then %d",
+						carry, before.UnixMilli(), after.UnixMilli(), ms, ms+1)
+				}
+
+				// Once the wall clock passes the counter, generation follows
+				// the clock again instead of continuing the counter.
+				synctest.Sleep(10 * time.Millisecond)
+				next := draw(1)[0]
+				if got, want := seqOf(next), wantSeq(time.Now()); got != want {
+					t.Errorf("after the clock caught up: ordering value = %d, want %d from the clock", got, want)
+				}
+				if Compare(next, ids[len(ids)-1]) <= 0 {
+					t.Errorf("after the clock caught up: %s does not sort after %s", next, ids[len(ids)-1])
+				}
+			})
+		})
+	}
+}
+
+func TestV7ClockBehindLastValue(t *testing.T) {
+	for _, src := range v7Sources() {
+		t.Run(src.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				draw, last := src.open()
+				now := time.Now()
+
+				// A value reserved an hour ahead is what a clock stepped back
+				// by an hour looks like: new UUIDs must continue from it.
+				ahead := wantSeq(now.Add(time.Hour))
+				*last = ahead
+				checkRun(t, draw(3), ahead+1)
+
+				// When the clock passes that point, it takes over again.
+				synctest.Sleep(2 * time.Hour)
+				if got, want := seqOf(draw(1)[0]), wantSeq(time.Now()); got != want {
+					t.Errorf("after the clock caught up: ordering value = %d, want %d", got, want)
+				}
+			})
+		})
+	}
+}
+
 // TestRandZeroAlloc enforces the zero-alloc guarantee for every generator
 // that reads crypto/rand. Skipped under the race detector: see raceEnabled.
 func TestRandZeroAlloc(t *testing.T) {

@@ -3,6 +3,7 @@ package uuid
 import (
 	"crypto/rand"
 	"crypto/sha1"
+	"encoding/binary"
 	"io"
 	"sync"
 	"time"
@@ -14,8 +15,7 @@ import (
 func NewV4() UUID {
 	var u UUID
 	_, _ = rand.Read(u[:])
-	u[6] = (u[6] & 0x0f) | 0x40 // version 4
-	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	stamp(&u, V4)
 	return u
 }
 
@@ -43,8 +43,7 @@ func NewV5(namespace UUID, name string) UUID {
 
 	var u UUID
 	copy(u[:], sum[:16])
-	u[6] = (u[6] & 0x0f) | 0x50 // version 5
-	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	stamp(&u, V5)
 	return u
 }
 
@@ -58,9 +57,8 @@ func NewV4Batch(n int) []UUID {
 	}
 	uuids := make([]UUID, n)
 	_, _ = rand.Read(rawBytes(uuids))
-	for i := range n {
-		uuids[i][6] = (uuids[i][6] & 0x0f) | 0x40 // version 4
-		uuids[i][8] = (uuids[i][8] & 0x3f) | 0x80 // variant RFC 9562
+	for i := range uuids {
+		stamp(&uuids[i], V4)
 	}
 	return uuids
 }
@@ -107,9 +105,8 @@ func NewPool() *Pool {
 
 func (p *Pool) refillV4() {
 	_, _ = rand.Read(rawBytes(p.v4buf[:]))
-	for i := range poolSize {
-		p.v4buf[i][6] = (p.v4buf[i][6] & 0x0f) | 0x40 // version 4
-		p.v4buf[i][8] = (p.v4buf[i][8] & 0x3f) | 0x80 // variant RFC 9562
+	for i := range p.v4buf {
+		stamp(&p.v4buf[i], V4)
 	}
 	p.v4left = poolSize
 }
@@ -145,11 +142,7 @@ func (p *Pool) NewV4() UUID {
 func (p *Pool) NewV7() UUID {
 	// Read the clock before taking the lock, as Generator.NewV7 does, so
 	// concurrent callers do not serialize on time.Now.
-	now := time.Now()
-	nano := now.UnixNano()
-	ms := nano / nanoPerMilli
-	frac := (nano % nanoPerMilli) * 4096 / nanoPerMilli
-	seq := ms<<12 | frac
+	seq := v7Seq(time.Now().UnixNano())
 
 	var u UUID
 	p.mu.Lock()
@@ -159,25 +152,10 @@ func (p *Pool) NewV7() UUID {
 	off := (poolSize - p.v7left) * 8
 	copy(u[8:], p.v7rand[off:off+8])
 	p.v7left--
-
-	if seq <= p.v7seq {
-		seq = p.v7seq + 1
-	}
-	p.v7seq = seq
+	seq = reserve(&p.v7seq, seq, 1)
 	p.mu.Unlock()
 
-	ms = seq >> 12
-	seq12 := seq & 0xFFF
-
-	u[0] = byte(ms >> 40)
-	u[1] = byte(ms >> 32)
-	u[2] = byte(ms >> 24)
-	u[3] = byte(ms >> 16)
-	u[4] = byte(ms >> 8)
-	u[5] = byte(ms)
-	u[6] = 0x70 | byte(seq12>>8)&0x0f
-	u[7] = byte(seq12)
-	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	setV7(&u, seq)
 	return u
 }
 
@@ -186,8 +164,7 @@ func (p *Pool) NewV7() UUID {
 // Uniqueness is the caller's responsibility per RFC 9562 Section 5.8.
 func NewV8(data [16]byte) UUID {
 	u := UUID(data)
-	u[6] = (u[6] & 0x0f) | 0x80 // version 8
-	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	stamp(&u, V8)
 	return u
 }
 
@@ -224,16 +201,7 @@ func NewV7At(t time.Time) UUID {
 
 	var u UUID
 	_, _ = rand.Read(u[8:])
-
-	u[0] = byte(ms >> 40)
-	u[1] = byte(ms >> 32)
-	u[2] = byte(ms >> 24)
-	u[3] = byte(ms >> 16)
-	u[4] = byte(ms >> 8)
-	u[5] = byte(ms)
-	u[6] = 0x70 | byte(frac>>8)&0x0f
-	u[7] = byte(frac)
-	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	setV7(&u, ms<<12|frac)
 	return u
 }
 
@@ -269,6 +237,45 @@ func NewGenerator() *Generator {
 
 const nanoPerMilli = 1_000_000
 
+// v7Seq returns the V7 ordering value of a Unix time in nanoseconds: the
+// millisecond timestamp shifted left 12 bits, plus the sub-millisecond
+// fraction scaled to 12 bits (RFC 9562 Section 6.2 Method 3). Generators
+// increment this value, so a carry out of the fraction advances the
+// millisecond. Callers read the clock themselves, which keeps v7Seq cheap
+// enough to inline.
+func v7Seq(nano int64) int64 {
+	return (nano/nanoPerMilli)<<12 | (nano%nanoPerMilli)*4096/nanoPerMilli
+}
+
+// reserve returns the first of n consecutive ordering values that start at
+// seq, or right after *last if seq does not exceed it, and records the
+// final value in *last. This keeps each generator strictly increasing even
+// when the clock stalls or steps back. The caller holds the lock that
+// guards *last.
+func reserve(last *int64, seq int64, n int) int64 {
+	if seq <= *last {
+		seq = *last + 1
+	}
+	*last = seq + int64(n-1)
+	return seq
+}
+
+// setV7 writes the V7 ordering value seq into bytes 0–7 of u: the 48-bit
+// millisecond timestamp (seq>>12) big-endian in bytes 0–5, then the version
+// and the 12-bit fraction (seq&0xFFF) in bytes 6–7. It also sets the variant
+// bits; the random rand_b in bytes 8–15 is otherwise kept.
+func setV7(u *UUID, seq int64) {
+	binary.BigEndian.PutUint64(u[:8], uint64(seq>>12)<<16|uint64(seq&0xFFF))
+	stamp(u, V7)
+}
+
+// stamp sets the version field (bits 48–51) to v and the variant field
+// (bits 64–65) to RFC 9562, keeping the other 122 bits of u.
+func stamp(u *UUID, v Version) {
+	u[6] = (u[6] & 0x0f) | byte(v)<<4
+	u[8] = (u[8] & 0x3f) | 0x80
+}
+
 // NewV7 returns a new Version 7 UUID.
 //
 // The UUID encodes a 48-bit Unix millisecond timestamp in bits 0–47 and
@@ -284,37 +291,13 @@ const nanoPerMilli = 1_000_000
 func (g *Generator) NewV7() UUID {
 	var u UUID
 	_, _ = rand.Read(u[8:])
-
-	now := time.Now()
-	nano := now.UnixNano()
-	ms := nano / nanoPerMilli
-	// RFC 9562 Section 6.2 Method 3: sub-millisecond precision scaled to 12 bits.
-	frac := (nano % nanoPerMilli) * 4096 / nanoPerMilli
-	seq := ms<<12 | frac
+	seq := v7Seq(time.Now().UnixNano())
 
 	g.mu.Lock()
-	if seq <= g.lastSeq {
-		seq = g.lastSeq + 1
-	}
-	g.lastSeq = seq
+	seq = reserve(&g.lastSeq, seq, 1)
 	g.mu.Unlock()
 
-	ms = seq >> 12
-	seq12 := seq & 0xFFF
-
-	// Encode 48-bit timestamp (big-endian) in bytes 0-5
-	u[0] = byte(ms >> 40)
-	u[1] = byte(ms >> 32)
-	u[2] = byte(ms >> 24)
-	u[3] = byte(ms >> 16)
-	u[4] = byte(ms >> 8)
-	u[5] = byte(ms)
-
-	// Encode version 7 and 12-bit sub-millisecond sequence in bytes 6-7
-	u[6] = 0x70 | byte(seq12>>8)&0x0f
-	u[7] = byte(seq12)
-
-	u[8] = (u[8] & 0x3f) | 0x80 // variant RFC 9562
+	setV7(&u, seq)
 	return u
 }
 
@@ -338,38 +321,17 @@ func (g *Generator) NewV7Batch(n int) []UUID {
 	randBuf := make([]byte, n*8)
 	_, _ = rand.Read(randBuf)
 
-	now := time.Now()
-	nano := now.UnixNano()
-	ms := nano / nanoPerMilli
-	frac := (nano % nanoPerMilli) * 4096 / nanoPerMilli
-	seq := ms<<12 | frac
+	seq := v7Seq(time.Now().UnixNano())
 
 	// Reserve n consecutive sequence values under the lock; encoding
 	// happens outside it so concurrent callers are not blocked for O(n).
 	g.mu.Lock()
-	if seq <= g.lastSeq {
-		seq = g.lastSeq + 1
-	}
-	g.lastSeq = seq + int64(n-1)
+	seq = reserve(&g.lastSeq, seq, n)
 	g.mu.Unlock()
 
-	for i := range n {
-		s := seq + int64(i)
-		msI := s >> 12
-		seq12 := s & 0xFFF
-
+	for i := range uuids {
 		copy(uuids[i][8:], randBuf[i*8:i*8+8])
-
-		uuids[i][0] = byte(msI >> 40)
-		uuids[i][1] = byte(msI >> 32)
-		uuids[i][2] = byte(msI >> 24)
-		uuids[i][3] = byte(msI >> 16)
-		uuids[i][4] = byte(msI >> 8)
-		uuids[i][5] = byte(msI)
-		uuids[i][6] = 0x70 | byte(seq12>>8)&0x0f
-		uuids[i][7] = byte(seq12)
-		uuids[i][8] = (uuids[i][8] & 0x3f) | 0x80 // variant RFC 9562
+		setV7(&uuids[i], seq+int64(i))
 	}
-
 	return uuids
 }

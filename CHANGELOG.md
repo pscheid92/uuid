@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `crypto/rand` became infallible in Go 1.24, not 1.26
   - SQLite has no native UUID type, and MariaDB has had one since 10.7
   - Internals: V7 counter bursts carry into the millisecond field after 4096 - `frac` values, not a fixed 4096, and push the encoded time ahead of the wall clock
+- Internal: the V7 generators share inlinable helpers for the clock-to-ordering-value conversion, the monotonic step, and the byte encoding, instead of four hand-copied versions; all generators share one version/variant stamp instead of nine copies. No behavior change; performance is unchanged within noise.
+- `FuzzParse` and `FuzzParseLenient` are folded into `FuzzDecodersAgree`, which now also round-trips every input `ParseLenient` accepts; CI runs one 30s fuzz step instead of three 10s steps
 
 ### Fixed
 
@@ -33,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FuzzDecodersAgree` cross-checks `Parse`, `UnmarshalText`, every `ParseLenient` form, and `Scan` (string and []byte) for identical results and errors; CI runs it
 - Zero-alloc tests for `Parse`, `ParseLenient` (all forms), `UnmarshalText`, and `AppendText`
 - Documented that the `Generator` zero value is ready to use, and that `Nil`, `Max`, and the namespace values must be treated as read-only
+- Tests for the V7 monotonic counter's edge cases, run against every V7 source (`Generator`, zero-value `Generator`, `NewV7Batch`, `Pool`, zero-value `Pool`): a burst that carries into the next millisecond, and a clock that steps back. Previously the counter was only exercised with three UUIDs.
 
 ## [0.5.0] - 2026-09-20
 

@@ -40,13 +40,16 @@ seq = ms<<12 | frac
 
 ## V7 Monotonic Counter Fallback
 
-When two UUIDs are generated within the same ~244ns window (same `seq` value), or when the clock hasn't advanced since the last call, the generator detects the collision and increments:
+When two UUIDs are generated within the same ~244ns window (same `seq` value), when the clock hasn't advanced since the last call, or when it has stepped back, the generator continues from the last value instead. `Generator.NewV7`, `Pool.NewV7`, and `NewV7Batch` all reserve their values through one helper, called under the generator's lock (`n` is 1 for a single UUID):
 
 ```go
-if seq <= g.lastSeq {
-    seq = g.lastSeq + 1  // increment to guarantee ordering
+func reserve(last *int64, seq int64, n int) int64 {
+    if seq <= *last {
+        seq = *last + 1 // continue after the last value to guarantee ordering
+    }
+    *last = seq + int64(n-1)
+    return seq
 }
-g.lastSeq = seq
 ```
 
 The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >> 12`), so the counter can overflow into the next millisecond transparently. The counter starts from the current sub-millisecond fraction, so a burst can take at most 4096 - `frac` values before it carries into the next millisecond; ordering continues seamlessly past that. The cost is that the encoded timestamp then runs ahead of the wall clock until real time catches up, which is why `UUID.Time` may report a slightly later time under sustained bursts.
