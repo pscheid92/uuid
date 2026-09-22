@@ -283,15 +283,72 @@ func TestScanBytesText(t *testing.T) {
 	}
 }
 
-func TestScanString16RawBytes(t *testing.T) {
-	want := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
-	raw := string(want.Bytes()) // e.g. a BINARY(16) column delivered as string
-	var u UUID
-	if err := u.Scan(raw); err != nil {
-		t.Fatalf("Scan(16-byte string) error: %v", err)
+func TestScanString16CharsIsText(t *testing.T) {
+	// A string is always text: a 16-character value from a text column must
+	// be rejected, not silently read as the raw bytes of a UUID.
+	for _, in := range []string{
+		"not a uuid at al",
+		string(MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8").Bytes()),
+	} {
+		var u UUID
+		err := u.Scan(in)
+		if _, ok := errors.AsType[*ParseError](err); !ok {
+			t.Errorf("Scan(%q) error = %v, want *ParseError", in, err)
+		}
+		if !u.IsNil() {
+			t.Errorf("Scan(%q) set u = %s, want it unchanged", in, u)
+		}
 	}
-	if u != want {
-		t.Errorf("Scan(16-byte string) = %v, want %v", u, want)
+}
+
+func TestDecodeErrorLeavesReceiverUnchanged(t *testing.T) {
+	bad := []string{
+		"short",
+		"6ba7b810+9dad-11d1-80b4-00c04fd430c8",
+		// Valid until the final digit, so a decoder writing in place would
+		// already have overwritten 15 bytes.
+		"00000000-0000-0000-0000-00000000000z",
+	}
+	decoders := map[string]func(*UUID, string) error{
+		"UnmarshalText":   func(u *UUID, s string) error { return u.UnmarshalText([]byte(s)) },
+		"Scan(string)":    func(u *UUID, s string) error { return u.Scan(s) },
+		"Scan([]byte)":    func(u *UUID, s string) error { return u.Scan([]byte(s)) },
+		"UnmarshalBinary": func(u *UUID, s string) error { return u.UnmarshalBinary([]byte(s)) },
+	}
+	for name, decode := range decoders {
+		t.Run(name, func(t *testing.T) {
+			for _, in := range bad {
+				u := Max
+				if err := decode(&u, in); err == nil {
+					t.Fatalf("%s(%q) succeeded, want error", name, in)
+				}
+				if u != Max {
+					t.Errorf("%s(%q) failed but changed u to %s", name, in, u)
+				}
+			}
+		})
+	}
+}
+
+func TestTextZeroAlloc(t *testing.T) {
+	const s = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	data := []byte(s)
+	u := MustParse(s)
+	buf := make([]byte, 0, 64)
+	for name, fn := range map[string]func(){
+		"Parse":                func() { u, _ = Parse(s) },
+		"ParseLenient":         func() { u, _ = ParseLenient(s) },
+		"ParseLenient URN":     func() { u, _ = ParseLenient("urn:uuid:" + s) },
+		"ParseLenient braced":  func() { u, _ = ParseLenient("{" + s + "}") },
+		"ParseLenient compact": func() { u, _ = ParseLenient("6ba7b8109dad11d180b400c04fd430c8") },
+		"UnmarshalText":        func() { _ = u.UnmarshalText(data) },
+		"AppendText":           func() { buf, _ = u.AppendText(buf[:0]) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if allocs := testing.AllocsPerRun(100, fn); allocs != 0 {
+				t.Errorf("%s allocs = %v, want 0", name, allocs)
+			}
+		})
 	}
 }
 

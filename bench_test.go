@@ -37,6 +37,17 @@ func BenchmarkNewV7Pool(b *testing.B) {
 	}
 }
 
+// BenchmarkNewV7PoolParallel measures a shared Pool under contention, where
+// the length of the critical section in Pool.NewV7 bounds throughput.
+func BenchmarkNewV7PoolParallel(b *testing.B) {
+	pool := NewPool()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			pool.NewV7()
+		}
+	})
+}
+
 func BenchmarkNewV7(b *testing.B) {
 	gen := NewGenerator()
 	for b.Loop() {
@@ -144,17 +155,30 @@ func BenchmarkAppendText(b *testing.B) {
 	}
 }
 
+// byteSink keeps marshaled results alive. Discarding them lets the compiler
+// inline the method and keep its buffer on the stack, which reports a
+// zero-alloc cost no real caller (json.Marshal, an interface call) sees.
+var byteSink []byte
+
 func BenchmarkMarshalText(b *testing.B) {
 	u := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 	for b.Loop() {
-		_, _ = u.MarshalText()
+		byteSink, _ = u.MarshalText()
+	}
+}
+
+func BenchmarkUnmarshalText(b *testing.B) {
+	data := []byte("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	var u UUID
+	for b.Loop() {
+		_ = u.UnmarshalText(data)
 	}
 }
 
 func BenchmarkMarshalBinary(b *testing.B) {
 	u := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 	for b.Loop() {
-		_, _ = u.MarshalBinary()
+		byteSink, _ = u.MarshalBinary()
 	}
 }
 

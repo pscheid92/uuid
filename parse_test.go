@@ -191,6 +191,48 @@ func TestParseLenientBracedBadHyphens(t *testing.T) {
 	}
 }
 
+func TestParseErrorPosition(t *testing.T) {
+	unmarshalText := func(s string) (UUID, error) {
+		var u UUID
+		err := u.UnmarshalText([]byte(s))
+		return u, err
+	}
+	tests := []struct {
+		name  string
+		parse func(string) (UUID, error)
+		input string
+		msg   string
+	}{
+		{"Parse hyphen", Parse, "6ba7b810-9dad+11d1-80b4-00c04fd430c8", "expected '-' at position 13"},
+		{"Parse hex high", Parse, "gba7b810-9dad-11d1-80b4-00c04fd430c8", "invalid hex character at position 0"},
+		{"Parse hex low", Parse, "6ba7b810-9dad-11d1-80b4-00c04fd430cg", "invalid hex character at position 35"},
+		{"Parse hex both", Parse, "6ba7b810-9dad-11d1-80b4-00c04fd430gg", "invalid hex character at position 34"},
+		{"Lenient standard", ParseLenient, "6ba7b810-9dad-11d1-80b4-00c04fd4z0c8", "invalid hex character at position 32"},
+		{"Lenient URN hyphen", ParseLenient, "urn:uuid:6ba7b810-9dad-11d1-80b4+00c04fd430c8", "expected '-' at position 32"},
+		{"Lenient URN hex", ParseLenient, "urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430cg", "invalid hex character at position 44"},
+		{"Lenient braced hyphen", ParseLenient, "{6ba7b810+9dad-11d1-80b4-00c04fd430c8}", "expected '-' at position 9"},
+		{"Lenient braced hex", ParseLenient, "{6ba7b810-9dad-11d1-8xb4-00c04fd430c8}", "invalid hex character at position 21"},
+		{"Lenient compact", ParseLenient, "6ba7b8109dad11d180b400c04fd430cg", "invalid hex character at position 31"},
+		{"UnmarshalText hyphen", unmarshalText, "6ba7b810-9dad-11d1-80b4_00c04fd430c8", "expected '-' at position 23"},
+		{"UnmarshalText hex", unmarshalText, "6ba7b810-9dad-11d1-80b4-00c04fd430cg", "invalid hex character at position 35"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.parse(tt.input)
+			perr, ok := errors.AsType[*ParseError](err)
+			if !ok {
+				t.Fatalf("error = %v (%T), want *ParseError", err, err)
+			}
+			if perr.Msg != tt.msg {
+				t.Errorf("Msg = %q, want %q", perr.Msg, tt.msg)
+			}
+			if perr.Input != tt.input {
+				t.Errorf("Input = %q, want the full input %q", perr.Input, tt.input)
+			}
+		})
+	}
+}
+
 func TestMustParse(t *testing.T) {
 	u := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 	if u.String() != "6ba7b810-9dad-11d1-80b4-00c04fd430c8" {

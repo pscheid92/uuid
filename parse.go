@@ -52,13 +52,13 @@ func Parse(s string) (UUID, error) {
 		return Nil, &ParseError{Input: errInput(s), Msg: "expected 36-character hyphenated format"}
 	}
 	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
-		return Nil, &ParseError{Input: s, Msg: "expected hyphens at positions 8, 13, 18, 23"}
+		return Nil, hyphenError(s, 0)
 	}
 	var u UUID
 	for i, x := range hexOffsets {
 		v, ok := xtob(s[x], s[x+1])
 		if !ok {
-			return Nil, &ParseError{Input: s, Msg: "invalid hex character"}
+			return Nil, hexError(s, x)
 		}
 		u[i] = v
 	}
@@ -73,23 +73,26 @@ func Parse(s string) (UUID, error) {
 func ParseLenient(s string) (UUID, error) {
 	switch len(s) {
 	case 36: // standard
-		return parseHex(s, s)
+		return parseHex(s, s, 0)
 
 	case 45: // urn:uuid:
 		// The urn scheme and uuid namespace are case-insensitive (RFC 8141).
 		if !strings.EqualFold(s[:9], "urn:uuid:") {
 			return Nil, &ParseError{Input: s, Msg: "expected urn:uuid: prefix"}
 		}
-		return parseHex(s[9:45], s)
+		return parseHex(s[9:45], s, 9)
 
 	case 38: // {braced}
 		if s[0] != '{' || s[37] != '}' {
 			return Nil, &ParseError{Input: s, Msg: "expected braces"}
 		}
-		return parseHex(s[1:37], s)
+		return parseHex(s[1:37], s, 1)
 
 	case 32: // compact (no hyphens)
-		return parseCompact(s)
+		if u, ok := parseCompact(s); ok {
+			return u, nil
+		}
+		return Nil, hexError(s, 0)
 
 	default:
 		return Nil, &ParseError{Input: errInput(s), Msg: "unrecognized UUID format"}
@@ -115,50 +118,64 @@ func FromBytes(b []byte) (UUID, error) {
 }
 
 // parseHex decodes the 36-character hyphenated window s, which the caller
-// has sliced out of the full input. Passing a window instead of an offset
-// keeps every index a constant, so the compiler can elide bounds checks.
-// Errors report the full input.
-func parseHex(s, input string) (UUID, error) {
+// has sliced out of the full input at offset off. Passing a window instead
+// of indexing input at off keeps every index a constant, so the compiler can
+// elide bounds checks; off is used only to report error positions relative
+// to the full input.
+func parseHex(s, input string, off int) (UUID, error) {
 	_ = s[35]
 	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
-		return Nil, &ParseError{Input: input, Msg: "expected hyphens at positions 8, 13, 18, 23"}
+		return Nil, hyphenError(input, off)
 	}
 	var u UUID
 	for i, x := range hexOffsets {
 		v, ok := xtob(s[x], s[x+1])
 		if !ok {
-			return Nil, &ParseError{Input: input, Msg: "invalid hex character"}
+			return Nil, hexError(input, off+x)
 		}
 		u[i] = v
 	}
 	return u, nil
 }
 
-// parseCompact decodes a 32-character hex string with no hyphens.
-func parseCompact(s string) (UUID, error) {
+// parseCompact decodes a 32-character hex string with no hyphens. It
+// reports failure as a bool, leaving the error to the caller, so that it
+// stays cheap enough for the compiler to inline into ParseLenient.
+func parseCompact(s string) (UUID, bool) {
 	var u UUID
 	for i := range 16 {
 		v, ok := xtob(s[i*2], s[i*2+1])
 		if !ok {
-			return Nil, &ParseError{Input: s, Msg: "invalid hex character"}
+			return Nil, false
 		}
 		u[i] = v
 	}
-	return u, nil
+	return u, true
 }
 
-// parseHexBytes decodes 32 hex digits from b starting at offset,
-// writing the result into u. Used by UnmarshalText to avoid string conversion.
-func parseHexBytes(u *UUID, b []byte, offset int) bool {
-	for i, x := range hexOffsets {
-		x += offset
-		v, ok := xtob(b[x], b[x+1])
-		if !ok {
-			return false
+// hyphenError reports the first missing hyphen in the 36-character
+// hyphenated form that starts at input[off]. Callers invoke it only after
+// one of the four hyphen checks has failed.
+func hyphenError(input string, off int) *ParseError {
+	var p int
+	for _, h := range [...]int{8, 13, 18, 23} {
+		p = off + h
+		if input[p] != '-' {
+			break
 		}
-		u[i] = v
 	}
-	return true
+	return &ParseError{Input: input, Msg: fmt.Sprintf("expected '-' at position %d", p)}
+}
+
+// hexError reports the first invalid hex character in input at or after
+// position p. Callers pass the start of a hex pair that xtob rejected, or
+// the start of a compact input that failed to decode, so the scan stops
+// within that pair or that input.
+func hexError(input string, p int) *ParseError {
+	for xvalues[input[p]] != 0xff {
+		p++
+	}
+	return &ParseError{Input: input, Msg: fmt.Sprintf("invalid hex character at position %d", p)}
 }
 
 // maxErrInputLen bounds how much of a failed input is retained in a
