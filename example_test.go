@@ -246,3 +246,14 @@ func Example_errInvalid() {
 	// true true
 	// not-a-uuid
 }
+
+// A Pool orders its V7 UUIDs through a Generator: NewPool uses the default
+// one shared with NewV7, and NewPoolFor binds a pool to a specific one.
+func ExampleNewPoolFor() {
+	gen := uuid.NewGenerator()
+	pool := uuid.NewPoolFor(gen)
+
+	ids := []uuid.UUID{gen.NewV7(), pool.NewV7(), gen.NewV7(), pool.NewV7()}
+	fmt.Println(slices.IsSortedFunc(ids, uuid.Compare))
+	// Output: true
+}
