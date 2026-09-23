@@ -71,7 +71,7 @@ func BenchmarkNewV7(b *testing.B) {
 func BenchmarkNewV4Batch100(b *testing.B) {
 	b.Run("pscheid92", func(b *testing.B) {
 		for b.Loop() {
-			pscheid.NewV4Batch(100)
+			batchSink = pscheid.NewV4Batch(100)
 		}
 	})
 	b.Run("google", func(b *testing.B) {
@@ -142,7 +142,7 @@ func BenchmarkNewV7Batch100(b *testing.B) {
 	b.Run("pscheid92", func(b *testing.B) {
 		gen := pscheid.NewGenerator()
 		for b.Loop() {
-			gen.NewV7Batch(100)
+			batchSink = gen.NewV7Batch(100)
 		}
 	})
 	b.Run("google", func(b *testing.B) {
@@ -246,6 +246,10 @@ func BenchmarkString(b *testing.B) {
 // ---------------------------------------------------------------------------
 // MarshalText
 // ---------------------------------------------------------------------------
+
+// batchSink keeps batch results alive, so the compiler cannot place an
+// inlined batch on the stack; a real caller keeps its UUIDs.
+var batchSink []pscheid.UUID
 
 // byteSink keeps marshaled results alive. Discarding them lets the compiler
 // inline MarshalText/MarshalBinary and keep the buffer on the stack, which

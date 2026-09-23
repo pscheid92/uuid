@@ -1,6 +1,7 @@
 package uuid
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -206,7 +207,21 @@ func errInputBytes(b []byte) string {
 	return errInput(string(b[:maxErrInputLen+1]))
 }
 
+// ErrInvalid matches, through [errors.Is], every error this package returns
+// for input that is not a valid UUID: a [ParseError] from parsing, text
+// decoding, or [UUID.Scan], and a [LengthError] from [FromBytes] or binary
+// decoding. It does not match Scan's errors for SQL NULL or an unsupported
+// source type, which are not malformed UUIDs.
+//
+//	if errors.Is(err, uuid.ErrInvalid) {
+//	    http.Error(w, "invalid id", http.StatusBadRequest)
+//	}
+//
+// Use [errors.AsType] on the concrete types for the offending input.
+var ErrInvalid = errors.New("uuid: invalid UUID")
+
 // ParseError is returned when a UUID string cannot be parsed.
+// It matches [ErrInvalid].
 //
 // Use [errors.AsType] to check for this error:
 //
@@ -222,7 +237,11 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("uuid: parsing %q: %s", e.Input, e.Msg)
 }
 
+// Is reports whether target is [ErrInvalid].
+func (e *ParseError) Is(target error) bool { return target == ErrInvalid }
+
 // LengthError is returned when the input has an unexpected byte length.
+// It matches [ErrInvalid].
 //
 // Use [errors.AsType] to check for this error:
 //
@@ -237,3 +256,6 @@ type LengthError struct {
 func (e *LengthError) Error() string {
 	return fmt.Sprintf("uuid: unexpected length %d, want %s", e.Got, e.Want)
 }
+
+// Is reports whether target is [ErrInvalid].
+func (e *LengthError) Is(target error) bool { return target == ErrInvalid }

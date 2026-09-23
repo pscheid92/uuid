@@ -29,9 +29,9 @@ fmt.Println(id.String())                                  // "550e8400-e29b-41d4
 
 | Version | Description | Function |
 |---------|-------------|----------|
-| V4 | Random | `NewV4()` / `Pool.NewV4()` / `NewV4Batch(n)` |
-| V5 | Deterministic (SHA-1) | `NewV5(namespace, name)` |
-| V7 | Timestamp + random | `NewV7()` / `NewV7At(t)` / `Pool.NewV7()` / `NewV7Batch(n)` |
+| V4 | Random | `NewV4()` / `Pool.NewV4()` / `NewV4Batch(n)` / `FillV4(dst)` |
+| V5 | Deterministic (SHA-1) | `NewV5(namespace, name)` / `NewV5Bytes(namespace, name)` |
+| V7 | Timestamp + random | `NewV7()` / `NewV7At(t)` / `Pool.NewV7()` / `NewV7Batch(n)` / `FillV7(dst)` |
 | V8 | Custom data | `NewV8(data)` |
 
 ## Usage
@@ -93,6 +93,14 @@ func (l *LenientUUID) UnmarshalText(b []byte) (err error) {
 var myID = uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
 ```
 
+Every error this package returns for malformed input matches `uuid.ErrInvalid`: from parsing, text and binary decoding (including a malformed UUID string inside JSON), and `Scan`. Errors that `encoding/json` itself raises, such as a syntax error or a number where a string belongs, do not. Use `errors.AsType[*uuid.ParseError]` when you need the offending input:
+
+```go
+if errors.Is(err, uuid.ErrInvalid) {
+    http.Error(w, "invalid id", http.StatusBadRequest)
+}
+```
+
 Format back to strings:
 
 ```go
@@ -146,8 +154,8 @@ Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and 
 
 - **Everything the standard library leaves out**: V5 and V8, `Version`/`Variant`/`Time` accessors, strict `Parse`, typed `ParseError` with the offending input, binary marshaling, `database/sql` `Scan`/`Value`, per-instance `Generator` monotonicity, `NewV7At` for backfilling, and the `Pool` and `Batch` high-throughput paths. Convert between the two types for free (see [Standard Library Interop](#standard-library-interop)).
 
-- **Zero allocations**: NewV4, NewV5 (names up to 240 bytes), NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5; google/uuid allocates on every one, except V4 and V7 when its pool is enabled.
-- **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~30x faster bulk V4, ~13x bulk V7 at n=100) amortize `crypto/rand` cost. google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating), ~1.6–1.8x slower than `Pool` here; no other library pools or generates in batches.
+- **Zero allocations**: NewV4, NewV5, NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5; google/uuid allocates on every one, except V4 and V7 when its pool is enabled.
+- **High-throughput APIs**: Pool (~14x faster V4, ~2x faster V7) and Batch (~30x faster bulk V4, ~15x bulk V7 at n=100) amortize `crypto/rand` cost; `FillV4`/`FillV7` reuse a buffer with no allocation at all. google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating), ~1.6–1.8x slower than `Pool` here; no other library pools or generates in batches.
 - **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
 - **No global configuration**: No `SetRand`, no swappable clock or random source. V4/V5/V8 are stateless. V7 monotonicity lives in a `Generator`: the package-level `NewV7` uses a shared default one (like `http.DefaultClient`), and you can create your own for isolated ordering.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
@@ -171,7 +179,7 @@ Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://g
 | NewV5 | 63 ns | - | 100 ns | **62 ns** |
 | NewV7 | 104 ns | **101 ns** | 296 ns | 117 ns |
 | NewV7 (Pool) | **45 ns** | - | 73 ns¹ | - |
-| NewV7Batch(100) | **778 ns** | - | 29,768 ns² | 11,615 ns² |
+| NewV7Batch(100) | **691 ns** | - | 29,768 ns² | 11,615 ns² |
 | Parse | **18 ns** | 25 ns | 19 ns | 27 ns |
 | UnmarshalText | **18 ns** | 25 ns | 19 ns | 27 ns |
 | String | **20 ns** | 29 ns | 26 ns | 24 ns |

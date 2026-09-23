@@ -1,6 +1,7 @@
 package uuid
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -17,9 +18,19 @@ func BenchmarkNewV5(b *testing.B) {
 	}
 }
 
+// batchSink keeps batch results alive; see byteSink.
+var batchSink []UUID
+
 func BenchmarkNewV4Batch100(b *testing.B) {
 	for b.Loop() {
-		NewV4Batch(100)
+		batchSink = NewV4Batch(100)
+	}
+}
+
+func BenchmarkFillV4_100(b *testing.B) {
+	dst := make([]UUID, 100)
+	for b.Loop() {
+		FillV4(dst)
 	}
 }
 
@@ -58,7 +69,15 @@ func BenchmarkNewV7(b *testing.B) {
 func BenchmarkNewV7Batch100(b *testing.B) {
 	gen := NewGenerator()
 	for b.Loop() {
-		gen.NewV7Batch(100)
+		batchSink = gen.NewV7Batch(100)
+	}
+}
+
+func BenchmarkFillV7_100(b *testing.B) {
+	gen := NewGenerator()
+	dst := make([]UUID, 100)
+	for b.Loop() {
+		gen.FillV7(dst)
 	}
 }
 
@@ -67,10 +86,15 @@ func BenchmarkNewV7Batch100(b *testing.B) {
 // directly bounds how much of the encoding can overlap.
 func BenchmarkNewV7BatchParallel(b *testing.B) {
 	gen := NewGenerator()
+	var mu sync.Mutex
 	b.RunParallel(func(pb *testing.PB) {
+		var local []UUID
 		for pb.Next() {
-			gen.NewV7Batch(1000)
+			local = gen.NewV7Batch(1000)
 		}
+		mu.Lock()
+		batchSink = local // keeps every result heap-allocated, as for a real caller
+		mu.Unlock()
 	})
 }
 

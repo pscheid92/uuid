@@ -3,6 +3,7 @@ package uuid_test
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -215,4 +216,33 @@ func Example_lenientJSON() {
 	// Output:
 	// true
 	// 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+}
+
+// FillV7 reuses a buffer: each call overwrites it with the next UUIDs of the
+// generator's sequence, allocating nothing.
+func ExampleGenerator_FillV7() {
+	gen := uuid.NewGenerator()
+	buf := make([]uuid.UUID, 3)
+
+	gen.FillV7(buf)
+	first := buf[2]
+	gen.FillV7(buf)
+
+	fmt.Println(slices.IsSortedFunc(buf, uuid.Compare), uuid.Compare(first, buf[0]) < 0)
+	// Output: true true
+}
+
+// ErrInvalid matches every malformed-input error this package returns,
+// whichever function produced it.
+func Example_errInvalid() {
+	_, parseErr := uuid.Parse("not-a-uuid")
+	_, bytesErr := uuid.FromBytes([]byte{1, 2, 3})
+	fmt.Println(errors.Is(parseErr, uuid.ErrInvalid), errors.Is(bytesErr, uuid.ErrInvalid))
+
+	if perr, ok := errors.AsType[*uuid.ParseError](parseErr); ok {
+		fmt.Println(perr.Input)
+	}
+	// Output:
+	// true true
+	// not-a-uuid
 }

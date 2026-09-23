@@ -1,6 +1,7 @@
 package uuid
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"slices"
 	"strings"
@@ -225,18 +226,34 @@ func TestNewV5NameLengths(t *testing.T) {
 	// take the streaming path. Both must agree with the RFC definition.
 	for _, n := range []int{0, 1, 15, v5StackBuf - 17, v5StackBuf - 16, v5StackBuf - 15, 1000} {
 		name := strings.Repeat("x", n)
-		if got, want := NewV5(NamespaceDNS, name), refV5(NamespaceDNS, name); got != want {
+		want := refV5(NamespaceDNS, name)
+		if got := NewV5(NamespaceDNS, name); got != want {
 			t.Errorf("NewV5(len %d) = %s, want %s", n, got, want)
+		}
+		if got := NewV5Bytes(NamespaceDNS, []byte(name)); got != want {
+			t.Errorf("NewV5Bytes(len %d) = %s, want %s", n, got, want)
 		}
 	}
 }
 
 func TestNewV5ZeroAlloc(t *testing.T) {
-	allocs := testing.AllocsPerRun(100, func() {
-		_ = NewV5(NamespaceDNS, "www.example.com")
-	})
-	if allocs != 0 {
-		t.Errorf("NewV5 allocs = %v, want 0", allocs)
+	name := []byte("www.example.com")
+	longName := strings.Repeat("x", 1000) // takes the streaming path
+	for fn, run := range map[string]func(){
+		"NewV5":           func() { _ = NewV5(NamespaceDNS, "www.example.com") },
+		"NewV5Bytes":      func() { _ = NewV5Bytes(NamespaceDNS, name) },
+		"NewV5 long name": func() { _ = NewV5(NamespaceDNS, longName) },
+		// A caller's stack buffer must stay on the stack, which requires
+		// that NewV5Bytes's name parameter does not escape.
+		"NewV5Bytes stack buffer": func() {
+			var buf [64]byte
+			n := copy(buf[:], "www.example.com")
+			_ = NewV5Bytes(NamespaceDNS, buf[:n])
+		},
+	} {
+		if allocs := testing.AllocsPerRun(100, run); allocs != 0 {
+			t.Errorf("%s allocs = %v, want 0", fn, allocs)
+		}
 	}
 }
 
@@ -498,6 +515,14 @@ func v7Sources() []v7Source {
 			g := NewGenerator()
 			return g.NewV7Batch, &g.lastSeq
 		}},
+		{"Generator.FillV7", func() (func(int) []UUID, *int64) {
+			g := NewGenerator()
+			return func(n int) []UUID {
+				dst := make([]UUID, n)
+				g.FillV7(dst)
+				return dst
+			}, &g.lastSeq
+		}},
 		{"Pool", func() (func(int) []UUID, *int64) {
 			p := NewPool()
 			return loop(p.NewV7), &p.v7seq
@@ -628,6 +653,80 @@ func TestV7BatchAndSingleShareOneCounter(t *testing.T) {
 	})
 }
 
+func TestFillV4(t *testing.T) {
+	dst := make([]UUID, 1000)
+	FillV4(dst)
+	seen := make(map[UUID]bool, len(dst))
+	for i, u := range dst {
+		if u.Version() != V4 || u.Variant() != VariantRFC9562 {
+			t.Fatalf("dst[%d] = %s: version %v, variant %v", i, u, u.Version(), u.Variant())
+		}
+		if seen[u] {
+			t.Fatalf("dst[%d] = %s repeats an earlier UUID", i, u)
+		}
+		seen[u] = true
+	}
+
+	// FillV4 and NewV4Batch read the same random stream the same way.
+	cryptotest.SetGlobalRandom(t, 7)
+	want := NewV4Batch(10)
+	cryptotest.SetGlobalRandom(t, 7)
+	got := make([]UUID, 10)
+	FillV4(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("FillV4 = %v, want NewV4Batch's %v", got, want)
+	}
+}
+
+func TestFillEmpty(t *testing.T) {
+	FillV4(nil)
+	FillV4([]UUID{})
+
+	gen := NewGenerator()
+	gen.FillV7(nil)
+	gen.FillV7([]UUID{})
+	if gen.lastSeq != 0 {
+		t.Errorf("FillV7 of nothing advanced the generator to %d", gen.lastSeq)
+	}
+}
+
+func TestFillV7TakesRandBFromTheStream(t *testing.T) {
+	// FillV7 reads rand_b into the upper half of dst and encodes in place.
+	// With a deterministic random stream, every UUID's rand_b must be its
+	// own 8-byte slice of that stream: an overlap mistake would hand a UUID
+	// bytes that were already overwritten. Small and odd sizes exercise the
+	// boundary where the two halves meet.
+	for n := 1; n <= 300; n++ {
+		cryptotest.SetGlobalRandom(t, uint64(n))
+		stream := make([]byte, n*8)
+		_, _ = rand.Read(stream)
+
+		cryptotest.SetGlobalRandom(t, uint64(n))
+		dst := make([]UUID, n)
+		NewGenerator().FillV7(dst)
+
+		for i, u := range dst {
+			want := [8]byte(stream[i*8:])
+			want[0] = want[0]&0x3f | 0x80 // FillV7 sets the variant bits
+			if got := [8]byte(u[8:]); got != want {
+				t.Fatalf("n=%d: dst[%d] rand_b = %x, want %x from the stream", n, i, got, want)
+			}
+		}
+	}
+}
+
+func TestFillV7PackageLevel(t *testing.T) {
+	// The package-level FillV7 shares the default generator with NewV7.
+	before := NewV7()
+	dst := make([]UUID, 5)
+	FillV7(dst)
+	after := NewV7()
+	all := slices.Concat([]UUID{before}, dst, []UUID{after})
+	if !slices.IsSortedFunc(all, Compare) {
+		t.Errorf("NewV7, FillV7, NewV7 are not ordered: %v", all)
+	}
+}
+
 // TestRandZeroAlloc enforces the zero-alloc guarantee for every generator
 // that reads crypto/rand. Skipped under the race detector: see raceEnabled.
 func TestRandZeroAlloc(t *testing.T) {
@@ -637,13 +736,17 @@ func TestRandZeroAlloc(t *testing.T) {
 	gen := NewGenerator()
 	pool := NewPool()
 	at := time.Now()
+	dst := make([]UUID, 1000)
 	for name, fn := range map[string]func(){
-		"NewV4":      func() { _ = NewV4() },
-		"NewV7":      func() { _ = NewV7() },
-		"NewV7At":    func() { _ = NewV7At(at) },
-		"Generator":  func() { _ = gen.NewV7() },
-		"Pool.NewV4": func() { _ = pool.NewV4() },
-		"Pool.NewV7": func() { _ = pool.NewV7() },
+		"FillV4":           func() { FillV4(dst) },
+		"FillV7":           func() { FillV7(dst) },
+		"Generator.FillV7": func() { gen.FillV7(dst) },
+		"NewV4":            func() { _ = NewV4() },
+		"NewV7":            func() { _ = NewV7() },
+		"NewV7At":          func() { _ = NewV7At(at) },
+		"Generator":        func() { _ = gen.NewV7() },
+		"Pool.NewV4":       func() { _ = pool.NewV4() },
+		"Pool.NewV7":       func() { _ = pool.NewV7() },
 	} {
 		t.Run(name, func(t *testing.T) {
 			if allocs := testing.AllocsPerRun(100, fn); allocs != 0 {

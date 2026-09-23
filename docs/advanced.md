@@ -42,10 +42,18 @@ For bulk workloads (database seeding, ETL, load testing), batch APIs generate ma
 
 ```go
 ids := uuid.NewV4Batch(1000) // ~40x faster than calling NewV4() in a loop
-ids  = uuid.NewV7Batch(1000) // ~20x faster, all monotonically increasing
+ids  = uuid.NewV7Batch(1000) // ~23x faster, all monotonically increasing
 ```
 
-`uuid.NewV7Batch` uses the package-level default generator; call `NewV7Batch` on a dedicated `Generator` for isolated monotonicity guarantees.
+To reuse a buffer instead of allocating a new slice each time, fill it in place. Both functions are allocation-free:
+
+```go
+buf := make([]uuid.UUID, 1000)
+uuid.FillV4(buf) // same as NewV4Batch, into buf
+uuid.FillV7(buf) // same as NewV7Batch, into buf, continuing the default generator
+```
+
+`uuid.NewV7Batch` and `uuid.FillV7` use the package-level default generator; call `NewV7Batch` or `FillV7` on a dedicated `Generator` for isolated monotonicity guarantees.
 
 Both `Pool` and `Batch` draw exclusively from `crypto/rand`, and `Pool` is safe for concurrent use. Each `Pool` keeps its own V7 monotonic state, independent of the package-level `NewV7` generator and of any other `Pool` or `Generator`; UUIDs drawn from different sources are not ordered relative to each other, so pick one source per ordering domain. One caveat: `Pool` buffers pre-generated randomness in process memory, so it is not fork-safe — a forked process or a cloned/restored VM snapshot duplicates the buffer and can emit identical UUIDs from both copies. Use the package-level functions where that matters. The batch APIs are unaffected since they read fresh randomness on every call.
 
