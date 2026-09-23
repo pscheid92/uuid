@@ -45,10 +45,12 @@
 //
 // Go 1.27 added a standard library package that is also named uuid, with the
 // same function names. goimports resolves a missing uuid import to the
-// standard library, even when other files import this package; the code
-// compiles, but the standard library's type has no [UUID.Scan] or
-// [UUID.Value]. Check the import path, and alias the standard library package
-// in files that use both:
+// standard library unless other files in the package already import this
+// one and use every uuid name the new file needs, so a new package or a
+// first use of a function gets the standard library. Such a file may still
+// compile, but its UUIDs have no [UUID.Scan] or [UUID.Value]. Check the
+// import path, and alias the standard library package in files that use
+// both:
 //
 //	import (
 //		stdlib "uuid"

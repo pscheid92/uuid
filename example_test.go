@@ -216,14 +216,3 @@ func Example_lenientJSON() {
 	// true
 	// 6ba7b810-9dad-11d1-80b4-00c04fd430c8
 }
-
-func ExampleUUID_Format() {
-	id := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
-	fmt.Printf("%v\n", id)
-	fmt.Printf("%x\n", id)
-	fmt.Printf("%X\n", id)
-	// Output:
-	// 6ba7b810-9dad-11d1-80b4-00c04fd430c8
-	// 6ba7b8109dad11d180b400c04fd430c8
-	// 6BA7B8109DAD11D180B400C04FD430C8
-}

@@ -452,43 +452,17 @@ func TestJSONv2RoundTrip(t *testing.T) {
 	}
 }
 
-// stringerOnly formats like UUID did before it implemented fmt.Formatter:
-// fmt used its String method for string verbs and the [16]byte otherwise.
-type stringerOnly [16]byte
-
-func (s stringerOnly) String() string { return UUID(s).String() }
-
-func TestFormat(t *testing.T) {
-	for _, u := range []UUID{Nil, Max, MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")} {
-		// Every verb except the hex ones prints exactly what it did when
-		// fmt only saw the String method.
-		for _, d := range []string{"%v", "%+v", "%s", "%q", "%d", "%40s|", "%-40s|", "%.8s", "%10.4v|", "%+q", "%#q", "%08b",
-			"%040s|", "%-040s|", "%05.2s|", "%.0s|", "%.40s|", "%3s|", "%+40v|", "% 40s|", "%#40s|", "%10q|"} {
-			if got, want := fmt.Sprintf(d, u), fmt.Sprintf(d, stringerOnly(u)); got != want {
-				t.Errorf("Sprintf(%q, %s) = %q, want %q", d, u, got, want)
-			}
-		}
-		oldGo := strings.Replace(fmt.Sprintf("%#v", stringerOnly(u)), "uuid.stringerOnly", "uuid.UUID", 1)
-		if got := fmt.Sprintf("%#v", u); got != oldGo {
-			t.Errorf("Sprintf(%%#v) = %q, want %q", got, oldGo)
-		}
-		if got, want := fmt.Sprint("id=", u), "id="+u.String(); got != want {
-			t.Errorf("Sprint = %q, want %q", got, want)
-		}
-
-		// The hex verbs format the 16 bytes, not the 36-character text.
-		for _, d := range []string{"%x", "%X", "% x", "%#x", "%40x|", "%-40X|"} {
-			if got, want := fmt.Sprintf(d, u), fmt.Sprintf(d, [16]byte(u)); got != want {
-				t.Errorf("Sprintf(%q, %s) = %q, want %q", d, u, got, want)
-			}
-		}
+// TestUUIDIsNotAFormatter guards a design decision. A Format method would
+// fix %x (which hex-encodes the String output), but it is promoted to every
+// type that embeds UUID and takes precedence over that type's own String and
+// Error methods, so `type OrderID struct{ UUID }` with a custom String, or an
+// error type embedding UUID, would print as a bare UUID. Use u[:] with %x.
+func TestUUIDIsNotAFormatter(t *testing.T) {
+	if _, ok := any(UUID{}).(fmt.Formatter); ok {
+		t.Fatal("UUID implements fmt.Formatter; see the comment on this test")
 	}
-	if got, want := fmt.Sprintf("%x", MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")), "6ba7b8109dad11d180b400c04fd430c8"; got != want {
-		t.Errorf("%%x = %q, want %q", got, want)
-	}
-	// Containers format their elements through Format too.
 	u := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
-	if got, want := fmt.Sprintf("%v", []UUID{u, Nil}), "["+u.String()+" "+Nil.String()+"]"; got != want {
-		t.Errorf("slice %%v = %q, want %q", got, want)
+	if got, want := fmt.Sprintf("%x", u[:]), "6ba7b8109dad11d180b400c04fd430c8"; got != want {
+		t.Errorf("%%x of u[:] = %q, want %q", got, want)
 	}
 }
