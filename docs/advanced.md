@@ -62,6 +62,12 @@ gen := uuid.NewGenerator()
 pool := uuid.NewPoolFor(gen) // pool.NewV7() continues gen's sequence
 ```
 
+`NewPoolFor(nil)` means the default generator, like `NewPool()`. Sharing an ordering means sharing its generator's lock: with one pool per goroutine on the default generator, every `NewV7` call waits on that lock (about 120 ns per call on 8 cores instead of about 12 ns). If those pools don't need to be ordered with each other, give each its own generator:
+
+```go
+pool := uuid.NewPoolFor(uuid.NewGenerator()) // per-goroutine: independent ordering, no shared lock
+```
+
 One caveat: `Pool` buffers pre-generated randomness in process memory, so it is not fork-safe — a forked process or a cloned/restored VM snapshot duplicates the buffer and can emit identical UUIDs from both copies. Use the package-level functions where that matters. The batch APIs are unaffected since they read fresh randomness on every call.
 
 See [Internals: Pool](internals.md#pool-amortizing-cryptorand) for how pooling works.

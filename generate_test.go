@@ -530,8 +530,9 @@ func v7Sources() []v7Source {
 		}},
 		{"zero-value Pool", func() (func(int) []UUID, *int64) {
 			// A zero-value Pool orders through the package-level default
-			// generator. Start it fresh so values follow this test's clock;
-			// tests do not run in parallel, so nothing else is using it.
+			// generator. Start it fresh so values follow this test's clock.
+			// This relies on no test calling t.Parallel: a concurrent test
+			// drawing from the default generator would see it jump.
 			defaultGen.mu.Lock()
 			defaultGen.lastSeq = 0
 			defaultGen.mu.Unlock()
@@ -735,6 +736,8 @@ func TestFillV7PackageLevel(t *testing.T) {
 }
 
 func TestPoolUsesItsGenerator(t *testing.T) {
+	// This test moves the package-level default generator an hour ahead and
+	// resets it afterwards, which relies on no test calling t.Parallel.
 	t.Cleanup(func() {
 		defaultGen.mu.Lock()
 		defaultGen.lastSeq = 0

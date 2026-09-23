@@ -101,15 +101,22 @@ func rawBytes(uuids []UUID) []byte {
 }
 
 // Pool amortizes the cost of crypto/rand by pre-generating random bytes
-// in bulk. It provides high-throughput [Pool.NewV4] and [Pool.NewV7] methods
-// that are functionally equivalent to the package-level functions.
-// Multiple goroutines may safely call methods concurrently.
+// in bulk. It provides high-throughput [Pool.NewV4] and [Pool.NewV7] methods:
+// NewV4 is functionally equivalent to the package-level [NewV4], and NewV7
+// to [Generator.NewV7] on the pool's generator. Multiple goroutines may
+// safely call methods concurrently.
 //
 // A Pool only buffers randomness; the ordering of its V7 UUIDs comes from a
 // [Generator]. [NewPool] and the zero value use the package-level default
 // generator, so Pool.NewV7 and [NewV7] produce one ordered sequence, and so
 // do separate Pools. Use [NewPoolFor] to order a Pool's V7 UUIDs with a
 // specific Generator instead.
+//
+// Sharing an ordering means sharing its generator's lock. One Pool per
+// goroutine on the default generator therefore serializes every NewV7 call
+// on that lock. When such pools need no ordering with each other, give each
+// its own generator, NewPoolFor(NewGenerator()), which keeps them
+// independent and contention-free.
 //
 // Because Pool buffers pre-generated randomness in process memory, it is
 // not fork-safe: a forked process or a cloned/restored VM snapshot can
