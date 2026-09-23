@@ -11,6 +11,10 @@ const hexDigits = "0123456789abcdef"
 
 // String returns the standard 36-character hyphenated UUID representation:
 // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
+//
+// fmt uses String for %v, %s, and %q, and also for %x and %X, which
+// therefore hex-encode these 36 characters. For the 32 hex digits of the
+// bytes, format the slice instead: fmt.Sprintf("%x", u[:]).
 func (u UUID) String() string {
 	var buf [36]byte
 	encodeHex(buf[:], u)
@@ -49,8 +53,11 @@ func (u UUID) MarshalText() ([]byte, error) {
 	return buf[:], nil
 }
 
-// UnmarshalText parses a UUID from text (strict 36-char format).
-// It implements [encoding.TextUnmarshaler]. On error, u is left unchanged.
+// UnmarshalText parses a UUID from text in the strict 36-character form, as
+// [Parse] does. It implements [encoding.TextUnmarshaler], so this is the rule
+// JSON, XML, and other text encodings apply; URN, braced, and compact input
+// is rejected. To accept those, see the LenientJSON example. On error, u is
+// left unchanged.
 func (u *UUID) UnmarshalText(data []byte) error {
 	if len(data) != 36 {
 		return &ParseError{Input: errInputBytes(data), Msg: "expected 36-character hyphenated format"}
@@ -131,7 +138,9 @@ func encodeHex(dst []byte, u UUID) {
 	dst[35] = hex[u[15]&0x0f]
 }
 
-// Scan implements [database/sql.Scanner]. It supports scanning from:
+// Scan implements [database/sql.Scanner]. Unlike [UUID.UnmarshalText], it
+// is lenient, because databases and drivers return UUIDs in different forms.
+// It supports scanning from:
 //   - string: text form parsed with [ParseLenient]
 //   - []byte: 16 raw bytes (a BINARY(16) column), otherwise text form
 //     parsed with [ParseLenient]

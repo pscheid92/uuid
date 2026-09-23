@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -448,5 +449,20 @@ func TestJSONv2RoundTrip(t *testing.T) {
 	err = jsonv2.Unmarshal([]byte(`{"id":"not-a-uuid"}`), &got)
 	if _, ok := errors.AsType[*ParseError](err); !ok {
 		t.Errorf("jsonv2.Unmarshal invalid: error = %T (%v), want *ParseError", err, err)
+	}
+}
+
+// TestUUIDIsNotAFormatter guards a design decision. A Format method would
+// fix %x (which hex-encodes the String output), but it is promoted to every
+// type that embeds UUID and takes precedence over that type's own String and
+// Error methods, so `type OrderID struct{ UUID }` with a custom String, or an
+// error type embedding UUID, would print as a bare UUID. Use u[:] with %x.
+func TestUUIDIsNotAFormatter(t *testing.T) {
+	if _, ok := any(UUID{}).(fmt.Formatter); ok {
+		t.Fatal("UUID implements fmt.Formatter; see the comment on this test")
+	}
+	u := MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	if got, want := fmt.Sprintf("%x", u[:]), "6ba7b8109dad11d180b400c04fd430c8"; got != want {
+		t.Errorf("%%x of u[:] = %q, want %q", got, want)
 	}
 }

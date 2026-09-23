@@ -33,6 +33,33 @@
 //	id, err := uuid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 //	id, err := uuid.ParseLenient("urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 //
+// The rule follows the source of the text. [Parse], [MustParse], and
+// [UUID.UnmarshalText] (and therefore JSON, XML, and other text encodings)
+// accept only the 36-character form. [ParseLenient] and [UUID.Scan]
+// (database/sql) accept all four. The standard library and google/uuid parse
+// leniently everywhere; code moving from them should call [ParseLenient]
+// where it relied on that. The LenientJSON example shows how to accept every
+// form in JSON.
+//
+// # The standard library uuid package
+//
+// Go 1.27 added a standard library package that is also named uuid, with the
+// same function names. goimports resolves a missing uuid import to the
+// standard library unless other files in the package already import this
+// one and use every uuid name the new file needs, so a new package or a
+// first use of a function gets the standard library. Such a file may still
+// compile, but its UUIDs have no [UUID.Scan] or [UUID.Value]. Check the
+// import path, and alias the standard library package in files that use
+// both:
+//
+//	import (
+//		stdlib "uuid"
+//
+//		"github.com/pscheid92/uuid"
+//	)
+//
+// Both types are [16]byte, so uuid.UUID(s) and stdlib.UUID(u) convert freely.
+//
 // # SQL NULL handling
 //
 // Instead of a separate NullUUID type, use a *UUID pointer:
