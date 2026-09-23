@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `UUID` implements `fmt.Formatter`: `%x` and `%X` print the 32 hex digits of the UUID (`6ba7b8109dad11d180b400c04fd430c8`), formatted like a `[16]byte` so `% x` and `%#x` work too. Previously they hex-encoded the 36-character string form, printing 72 digits. `%v`, `%s`, `%q`, `%#v`, and every other verb print exactly what they did before, including width, precision, and flags; plain `%v` is as fast as before and padded `%-40s` about 10% faster.
+
+### Added
+
+- README callout and package docs on the Go 1.27 standard library `uuid` package: goimports resolves a missing `uuid` import to it, even when other files import this package, and its type has no `Scan`/`Value`
+- Documented which entry points are strict and which are lenient: `Parse`, `MustParse`, and `UnmarshalText` (JSON and other text encodings) accept only the 36-character form; `ParseLenient` and `Scan` accept all four. `Example (LenientJSON)` shows a wrapper type that accepts every form in JSON.
+
 ## [0.6.0] - 2026-09-22
 
 ### Changed

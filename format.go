@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 )
 
@@ -15,6 +16,84 @@ func (u UUID) String() string {
 	var buf [36]byte
 	encodeHex(buf[:], u)
 	return string(buf[:])
+}
+
+// Format implements [fmt.Formatter] so that %x and %X print the 32 hex
+// digits of u without hyphens, formatted like a [16]byte: "% x" spaces the
+// bytes and "%#x" adds a 0x prefix. Without it, %x would hex-encode the
+// 36-character [UUID.String] output instead.
+//
+// %v, %s, and %q print [UUID.String], honoring width, precision, and flags;
+// %#v prints a Go composite literal. Any other verb formats the underlying
+// [16]byte.
+func (u UUID) Format(f fmt.State, verb rune) {
+	switch verb {
+	case 'v', 's':
+		if verb == 'v' && f.Flag('#') {
+			u.formatGoSyntax(f)
+			return
+		}
+		// Write the text directly rather than through a second Fprintf,
+		// which would allocate a string and a format directive.
+		var buf [36]byte
+		encodeHex(buf[:], u)
+		writePadded(f, buf[:])
+	case 'q':
+		_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), u.String())
+	default:
+		_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), [16]byte(u))
+	}
+}
+
+// writePadded writes text the way fmt writes a string operand: truncated to
+// the precision, then padded to the width with leading spaces, leading zeros
+// under the '0' flag, or trailing spaces under the '-' flag. text must be
+// ASCII, so that bytes and runes coincide.
+func writePadded(f fmt.State, text []byte) {
+	if p, ok := f.Precision(); ok && p < len(text) {
+		text = text[:p]
+	}
+	w, _ := f.Width()
+	pad := max(w-len(text), 0)
+	if f.Flag('-') {
+		_, _ = f.Write(text)
+		writeRepeated(f, spaces, pad)
+		return
+	}
+	fill := spaces
+	if f.Flag('0') {
+		fill = zeros
+	}
+	writeRepeated(f, fill, pad)
+	_, _ = f.Write(text)
+}
+
+const (
+	spaces = "                "
+	zeros  = "0000000000000000"
+)
+
+// writeRepeated writes n bytes of fill (spaces or zeros) to f. Writing
+// slices of a constant keeps padding allocation-free.
+func writeRepeated(f fmt.State, fill string, n int) {
+	for n > 0 {
+		k := min(n, len(fill))
+		_, _ = io.WriteString(f, fill[:k])
+		n -= k
+	}
+}
+
+// formatGoSyntax writes u as a Go composite literal, the way %#v prints any
+// named byte array: uuid.UUID{0x6b, 0xa7, ...}.
+func (u UUID) formatGoSyntax(f fmt.State) {
+	_, _ = io.WriteString(f, "uuid.UUID{")
+	for i, b := range u {
+		if i > 0 {
+			_, _ = io.WriteString(f, ", ")
+		}
+		_, _ = fmt.Fprintf(f, "%#x", b)
+	}
+	_, _ = io.WriteString(f, "}")
 }
 
 // URN returns the UUID in URN form: urn:uuid:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
@@ -49,8 +128,11 @@ func (u UUID) MarshalText() ([]byte, error) {
 	return buf[:], nil
 }
 
-// UnmarshalText parses a UUID from text (strict 36-char format).
-// It implements [encoding.TextUnmarshaler]. On error, u is left unchanged.
+// UnmarshalText parses a UUID from text in the strict 36-character form, as
+// [Parse] does. It implements [encoding.TextUnmarshaler], so this is the rule
+// JSON, XML, and other text encodings apply; URN, braced, and compact input
+// is rejected. To accept those, see the LenientJSON example. On error, u is
+// left unchanged.
 func (u *UUID) UnmarshalText(data []byte) error {
 	if len(data) != 36 {
 		return &ParseError{Input: errInputBytes(data), Msg: "expected 36-character hyphenated format"}
@@ -131,7 +213,9 @@ func encodeHex(dst []byte, u UUID) {
 	dst[35] = hex[u[15]&0x0f]
 }
 
-// Scan implements [database/sql.Scanner]. It supports scanning from:
+// Scan implements [database/sql.Scanner]. Unlike [UUID.UnmarshalText], it
+// is lenient, because databases and drivers return UUIDs in different forms.
+// It supports scanning from:
 //   - string: text form parsed with [ParseLenient]
 //   - []byte: 16 raw bytes (a BINARY(16) column), otherwise text form
 //     parsed with [ParseLenient]

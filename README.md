@@ -11,6 +11,9 @@ A modern, zero-dependency Go UUID library with zero-alloc hot paths, implementin
 go get github.com/pscheid92/uuid
 ```
 
+> [!IMPORTANT]
+> Go 1.27 added a standard library package that is also named `uuid`, with the same function names (`NewV7`, `Parse`, `MustParse`, ...). When goimports (or an editor using its import logic, such as gopls) adds a missing import for `uuid.NewV7()`, it picks the standard library's `"uuid"`, even if other files in the package import this one. The code still compiles, but you get the standard library's type, which has no `Scan`/`Value` for `database/sql` and parses leniently. Check that the import reads `github.com/pscheid92/uuid`, and alias the standard library package (`stdlib "uuid"`) in files that need both. See [Standard Library Interop](#standard-library-interop).
+
 ## Quick Start
 
 ```go
@@ -66,6 +69,24 @@ id, _ := uuid.ParseLenient("{6ba7b810-9dad-11d1-80b4-00c04fd430c8}")
 id, _ := uuid.ParseLenient("6ba7b8109dad11d180b400c04fd430c8")
 ```
 
+Which form is accepted depends on where the text comes from:
+
+| Entry point | Accepts |
+|-------------|---------|
+| `Parse`, `MustParse`, `UnmarshalText` (JSON, XML, and other text encodings) | Only the 36-character form |
+| `ParseLenient`, `Scan` (`database/sql`) | All four forms |
+
+Text encodings are strict because they are usually API input, where anything but the canonical form is a client bug worth rejecting. `Scan` is lenient because databases and drivers return UUIDs in different forms. google/uuid and the standard library parse leniently everywhere, so code moving from them should call `ParseLenient` where it relied on that. To accept every form in JSON, wrap the type (see the `Example (LenientJSON)` in the [package docs](https://pkg.go.dev/github.com/pscheid92/uuid)):
+
+```go
+type LenientUUID struct{ uuid.UUID }
+
+func (l *LenientUUID) UnmarshalText(b []byte) (err error) {
+	l.UUID, err = uuid.ParseLenient(string(b))
+	return err
+}
+```
+
 `MustParse` panics on failure, useful for package-level constants:
 
 ```go
@@ -77,6 +98,9 @@ Format back to strings:
 ```go
 id.String() // "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 id.URN()    // "urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+fmt.Printf("%v", id) // 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+fmt.Printf("%x", id) // 6ba7b8109dad11d180b400c04fd430c8 (the 16 bytes as hex)
 ```
 
 ### Serialization

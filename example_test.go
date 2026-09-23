@@ -2,6 +2,7 @@ package uuid_test
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -187,4 +188,42 @@ func ExampleUUID_stdlibInterop() {
 	// Output:
 	// V1
 	// true
+}
+
+// LenientUUID accepts every form ParseLenient does when decoded from JSON or
+// another text encoding, where UUID itself accepts only the 36-character form.
+type LenientUUID struct{ uuid.UUID }
+
+func (l *LenientUUID) UnmarshalText(b []byte) (err error) {
+	l.UUID, err = uuid.ParseLenient(string(b))
+	return err
+}
+
+// UUID's JSON decoding is strict like Parse. Wrap it to accept URN, braced,
+// and compact input too.
+func Example_lenientJSON() {
+	const in = `{"id":"{6ba7b810-9dad-11d1-80b4-00c04fd430c8}"}`
+
+	var strict struct{ ID uuid.UUID }
+	fmt.Println(json.Unmarshal([]byte(in), &strict) != nil)
+
+	var lenient struct{ ID LenientUUID }
+	if err := json.Unmarshal([]byte(in), &lenient); err != nil {
+		panic(err)
+	}
+	fmt.Println(lenient.ID)
+	// Output:
+	// true
+	// 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+}
+
+func ExampleUUID_Format() {
+	id := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	fmt.Printf("%v\n", id)
+	fmt.Printf("%x\n", id)
+	fmt.Printf("%X\n", id)
+	// Output:
+	// 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+	// 6ba7b8109dad11d180b400c04fd430c8
+	// 6BA7B8109DAD11D180B400C04FD430C8
 }
