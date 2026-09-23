@@ -101,9 +101,22 @@ func rawBytes(uuids []UUID) []byte {
 }
 
 // Pool amortizes the cost of crypto/rand by pre-generating random bytes
-// in bulk. It provides high-throughput [Pool.NewV4] and [Pool.NewV7] methods
-// that are functionally equivalent to the package-level functions.
-// Multiple goroutines may safely call methods concurrently.
+// in bulk. It provides high-throughput [Pool.NewV4] and [Pool.NewV7] methods:
+// NewV4 is functionally equivalent to the package-level [NewV4], and NewV7
+// to [Generator.NewV7] on the pool's generator. Multiple goroutines may
+// safely call methods concurrently.
+//
+// A Pool only buffers randomness; the ordering of its V7 UUIDs comes from a
+// [Generator]. [NewPool] and the zero value use the package-level default
+// generator, so Pool.NewV7 and [NewV7] produce one ordered sequence, and so
+// do separate Pools. Use [NewPoolFor] to order a Pool's V7 UUIDs with a
+// specific Generator instead.
+//
+// Sharing an ordering means sharing its generator's lock. One Pool per
+// goroutine on the default generator therefore serializes every NewV7 call
+// on that lock. When such pools need no ordering with each other, give each
+// its own generator, NewPoolFor(NewGenerator()), which keeps them
+// independent and contention-free.
 //
 // Because Pool buffers pre-generated randomness in process memory, it is
 // not fork-safe: a forked process or a cloned/restored VM snapshot can
@@ -121,15 +134,26 @@ type Pool struct {
 	// V7: pre-generated random bytes for rand_b (bytes 8–15).
 	// Timestamp + monotonic sequence are computed live per call.
 	v7rand [poolSize * 8]byte
-	v7left int   // 8-byte chunks remaining in v7rand; zero triggers a refill
-	v7seq  int64 // ms<<12 | seq for V7 monotonicity
+	v7left int // 8-byte chunks remaining in v7rand; zero triggers a refill
+
+	gen *Generator // orders V7 UUIDs; nil means the package-level default
 }
 
 const poolSize = 256
 
-// NewPool returns a new [Pool] that amortizes crypto/rand overhead.
+// NewPool returns a new [Pool] that amortizes crypto/rand overhead. Its V7
+// UUIDs are ordered with [NewV7] through the package-level default
+// generator; it is equivalent to &Pool{}.
 func NewPool() *Pool {
 	return &Pool{}
+}
+
+// NewPoolFor returns a new [Pool] whose V7 UUIDs continue gen's sequence,
+// ordered with gen's own UUIDs and those of every other Pool created for
+// gen. A nil gen means the package-level default generator, as for
+// [NewPool].
+func NewPoolFor(gen *Generator) *Pool {
+	return &Pool{gen: gen}
 }
 
 func (p *Pool) refillV4() {
@@ -160,16 +184,13 @@ func (p *Pool) NewV4() UUID {
 }
 
 // NewV7 returns a new Version 7 UUID from the pool.
-// It is functionally equivalent to [Generator.NewV7] but amortizes
-// the crypto/rand overhead by buffering random bytes for the rand_b field.
-// Timestamps are computed live to remain accurate, though under sustained
-// bursts they may run slightly ahead of the wall clock (see [Generator.NewV7]).
-//
-// Each Pool keeps its own monotonic state, independent of the package-level
-// [NewV7] generator and of every other Pool or [Generator]. UUIDs drawn from
-// different sources are not ordered relative to each other.
+// It is functionally equivalent to [Generator.NewV7] on the pool's
+// generator, and ordered with it, but amortizes the crypto/rand overhead by
+// buffering random bytes for the rand_b field. Timestamps are computed live
+// to remain accurate, though under sustained bursts they may run slightly
+// ahead of the wall clock (see [Generator.NewV7]).
 func (p *Pool) NewV7() UUID {
-	// Read the clock before taking the lock, as Generator.NewV7 does, so
+	// Read the clock before taking any lock, as Generator.NewV7 does, so
 	// concurrent callers do not serialize on time.Now.
 	seq := v7Seq(time.Now().UnixNano())
 
@@ -181,8 +202,17 @@ func (p *Pool) NewV7() UUID {
 	off := (poolSize - p.v7left) * 8
 	copy(u[8:], p.v7rand[off:off+8])
 	p.v7left--
-	seq = reserve(&p.v7seq, seq, 1)
 	p.mu.Unlock()
+
+	// The sequence comes from the generator, under its own lock, so this
+	// UUID is ordered with everything else drawn from that generator.
+	g := p.gen
+	if g == nil {
+		g = defaultGen
+	}
+	g.mu.Lock()
+	seq = reserve(&g.lastSeq, seq, 1)
+	g.mu.Unlock()
 
 	setV7(&u, seq)
 	return u

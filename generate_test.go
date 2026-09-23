@@ -523,13 +523,21 @@ func v7Sources() []v7Source {
 				return dst
 			}, &g.lastSeq
 		}},
-		{"Pool", func() (func(int) []UUID, *int64) {
-			p := NewPool()
-			return loop(p.NewV7), &p.v7seq
+		{"NewPoolFor", func() (func(int) []UUID, *int64) {
+			g := NewGenerator()
+			p := NewPoolFor(g)
+			return loop(p.NewV7), &g.lastSeq
 		}},
 		{"zero-value Pool", func() (func(int) []UUID, *int64) {
+			// A zero-value Pool orders through the package-level default
+			// generator. Start it fresh so values follow this test's clock.
+			// This relies on no test calling t.Parallel: a concurrent test
+			// drawing from the default generator would see it jump.
+			defaultGen.mu.Lock()
+			defaultGen.lastSeq = 0
+			defaultGen.mu.Unlock()
 			var p Pool
-			return loop(p.NewV7), &p.v7seq
+			return loop(p.NewV7), &defaultGen.lastSeq
 		}},
 	}
 }
@@ -724,6 +732,37 @@ func TestFillV7PackageLevel(t *testing.T) {
 	all := slices.Concat([]UUID{before}, dst, []UUID{after})
 	if !slices.IsSortedFunc(all, Compare) {
 		t.Errorf("NewV7, FillV7, NewV7 are not ordered: %v", all)
+	}
+}
+
+func TestPoolUsesItsGenerator(t *testing.T) {
+	// This test moves the package-level default generator an hour ahead and
+	// resets it afterwards, which relies on no test calling t.Parallel.
+	t.Cleanup(func() {
+		defaultGen.mu.Lock()
+		defaultGen.lastSeq = 0
+		defaultGen.mu.Unlock()
+	})
+	g := NewGenerator()
+	for name, tc := range map[string]struct {
+		pool *Pool
+		gen  *Generator
+	}{
+		"NewPool":         {NewPool(), defaultGen},
+		"zero value":      {&Pool{}, defaultGen},
+		"NewPoolFor(nil)": {NewPoolFor(nil), defaultGen},
+		"NewPoolFor(g)":   {NewPoolFor(g), g},
+	} {
+		// With the generator an hour ahead of the clock, the pool's next
+		// UUID must continue from it; a pool with its own state would
+		// follow the clock instead.
+		ahead := wantSeq(time.Now().Add(time.Hour))
+		tc.gen.mu.Lock()
+		tc.gen.lastSeq = ahead
+		tc.gen.mu.Unlock()
+		if got := seqOf(tc.pool.NewV7()); got != ahead+1 {
+			t.Errorf("%s: ordering value = %d, want %d, right after its generator's", name, got, ahead+1)
+		}
 	}
 }
 
