@@ -1,6 +1,7 @@
 package uuid
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"slices"
 	"strings"
@@ -237,9 +238,18 @@ func TestNewV5NameLengths(t *testing.T) {
 
 func TestNewV5ZeroAlloc(t *testing.T) {
 	name := []byte("www.example.com")
+	longName := strings.Repeat("x", 1000) // takes the streaming path
 	for fn, run := range map[string]func(){
-		"NewV5":      func() { _ = NewV5(NamespaceDNS, "www.example.com") },
-		"NewV5Bytes": func() { _ = NewV5Bytes(NamespaceDNS, name) },
+		"NewV5":           func() { _ = NewV5(NamespaceDNS, "www.example.com") },
+		"NewV5Bytes":      func() { _ = NewV5Bytes(NamespaceDNS, name) },
+		"NewV5 long name": func() { _ = NewV5(NamespaceDNS, longName) },
+		// A caller's stack buffer must stay on the stack, which requires
+		// that NewV5Bytes's name parameter does not escape.
+		"NewV5Bytes stack buffer": func() {
+			var buf [64]byte
+			n := copy(buf[:], "www.example.com")
+			_ = NewV5Bytes(NamespaceDNS, buf[:n])
+		},
 	} {
 		if allocs := testing.AllocsPerRun(100, run); allocs != 0 {
 			t.Errorf("%s allocs = %v, want 0", fn, allocs)
@@ -680,21 +690,27 @@ func TestFillEmpty(t *testing.T) {
 	}
 }
 
-func TestFillV7RandomTailNeverRepeats(t *testing.T) {
-	// FillV7 reads rand_b into the upper half of dst and encodes in place;
-	// an overlap mistake would hand two UUIDs the same bytes. Odd and tiny
-	// sizes exercise the boundary where the two halves meet.
-	for _, n := range []int{1, 2, 3, 7, 100, 1001} {
+func TestFillV7TakesRandBFromTheStream(t *testing.T) {
+	// FillV7 reads rand_b into the upper half of dst and encodes in place.
+	// With a deterministic random stream, every UUID's rand_b must be its
+	// own 8-byte slice of that stream: an overlap mistake would hand a UUID
+	// bytes that were already overwritten. Small and odd sizes exercise the
+	// boundary where the two halves meet.
+	for n := 1; n <= 300; n++ {
+		cryptotest.SetGlobalRandom(t, uint64(n))
+		stream := make([]byte, n*8)
+		_, _ = rand.Read(stream)
+
+		cryptotest.SetGlobalRandom(t, uint64(n))
 		dst := make([]UUID, n)
 		NewGenerator().FillV7(dst)
-		seen := make(map[[8]byte]int, n)
+
 		for i, u := range dst {
-			tail := [8]byte(u[8:])
-			tail[0] &= 0x3f // ignore the variant bits
-			if j, dup := seen[tail]; dup {
-				t.Fatalf("n=%d: dst[%d] and dst[%d] share rand_b %x", n, j, i, tail)
+			want := [8]byte(stream[i*8:])
+			want[0] = want[0]&0x3f | 0x80 // FillV7 sets the variant bits
+			if got := [8]byte(u[8:]); got != want {
+				t.Fatalf("n=%d: dst[%d] rand_b = %x, want %x from the stream", n, i, got, want)
 			}
-			seen[tail] = i
 		}
 	}
 }

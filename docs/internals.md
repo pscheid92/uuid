@@ -67,7 +67,7 @@ The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >
 
 ## V5: Zero-Alloc Hashing
 
-V5 (SHA-1) hashes `namespace || name` to produce deterministic UUIDs. For names up to 240 bytes, the library concatenates namespace and name into a 256-byte stack buffer and calls `sha1.Sum` directly, which takes a concrete `[]byte` and returns a `[20]byte` - nothing escapes to the heap, so `NewV5` is zero-alloc. Longer names fall back to the streaming `hash.Hash` API, which allocates because arguments passed through an interface escape.
+V5 (SHA-1) hashes `namespace || name` to produce deterministic UUIDs. For names up to 240 bytes, the library concatenates namespace and name into a 256-byte stack buffer and calls `sha1.Sum` directly, which takes a concrete `[]byte` and returns a `[20]byte`, so nothing escapes to the heap. Longer names are streamed into a `sha1.New` hash through a 256-byte buffer. Passing the name itself to the hash's `Write` would be an interface call that makes the `name` parameter escape, which would also move a caller's stack buffer given to `NewV5Bytes` to the heap. Copying through a local buffer avoids that, and the compiler keeps the hash state on the stack too, so `NewV5` allocates nothing at any length.
 
 This replaced an earlier `hash.Cloner` approach that pre-hashed the namespace: since a 16-byte namespace never fills a 64-byte SHA-1 block, cloning saved no compression rounds, and the interface calls cost four allocations per UUID.
 

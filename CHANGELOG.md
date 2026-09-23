@@ -14,12 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented which entry points are strict and which are lenient: `Parse`, `MustParse`, and `UnmarshalText` (JSON and other text encodings) accept only the 36-character form; `ParseLenient` and `Scan` accept all four. `Example (LenientJSON)` shows a wrapper type that accepts every form in JSON.
 - `FillV4(dst)`, `FillV7(dst)`, and `Generator.FillV7(dst)` overwrite a caller's slice with new UUIDs and allocate nothing, for callers that reuse a buffer. `NewV4Batch` and `NewV7Batch` are now built on them.
 - `ErrInvalid`: every error for malformed input (`ParseError` from parsing, text decoding, and `Scan`; `LengthError` from `FromBytes` and binary decoding) matches it through `errors.Is`. `Scan`'s errors for SQL NULL and unsupported source types do not.
-- `NewV5Bytes(namespace, name []byte)`, the same as `NewV5` for a name held in a byte slice, without a string conversion; zero-alloc for names up to 240 bytes
+- `NewV5Bytes(namespace, name []byte)`, the same as `NewV5` for a name held in a byte slice, without a string conversion; zero-alloc, including from a caller's stack buffer
 
 ### Changed
 
 - `NewV7Batch` reads `rand_b` into the upper half of its result and encodes in place, instead of through a second buffer: one allocation instead of two, and 10–13% faster serially (~691 ns vs ~778 ns at n=100) with no loss under parallel load
 - Batch benchmarks keep their result, so an inlined `make` is not stack-allocated in a way no real caller sees
+- `NewV5` streams names longer than 240 bytes into the hash through a local buffer instead of `io.WriteString`, so its `name` parameter no longer escapes and long names no longer allocate: zero allocations at any length (was 2 beyond 240 bytes), and ~15% faster for a 1000-byte name
 
 ## [0.6.0] - 2026-09-22
 

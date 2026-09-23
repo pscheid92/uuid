@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/binary"
-	"io"
 	"sync"
 	"time"
 	"unsafe"
@@ -20,12 +19,12 @@ func NewV4() UUID {
 }
 
 // v5StackBuf is the size of the stack buffer used to hash namespace||name
-// in NewV5 without allocating. Names longer than v5StackBuf-16 bytes fall
-// back to a streaming hash.
+// in NewV5 with a single sha1.Sum call. Longer names are streamed into the
+// hash through a buffer of the same size.
 const v5StackBuf = 256
 
 // NewV5 returns a deterministic Version 5 (SHA-1) UUID for the given namespace and name.
-// It allocates nothing for names up to 240 bytes.
+// It allocates nothing, whatever the length of name.
 func NewV5(namespace UUID, name string) UUID {
 	var sum [sha1.Size]byte
 	if len(name) <= v5StackBuf-len(namespace) {
@@ -35,9 +34,17 @@ func NewV5(namespace UUID, name string) UUID {
 		n := copy(buf[len(namespace):], name)
 		sum = sha1.Sum(buf[:len(namespace)+n])
 	} else {
+		// Feed the name through a local buffer rather than passing it to
+		// the hash's Write, an interface call that would make name escape
+		// and move callers' stack buffers (see NewV5Bytes) to the heap.
 		h := sha1.New()
 		h.Write(namespace[:])
-		_, _ = io.WriteString(h, name)
+		var chunk [v5StackBuf]byte
+		for rest := name; rest != ""; {
+			n := copy(chunk[:], rest)
+			h.Write(chunk[:n])
+			rest = rest[n:]
+		}
 		h.Sum(sum[:0])
 	}
 
@@ -49,7 +56,7 @@ func NewV5(namespace UUID, name string) UUID {
 
 // NewV5Bytes is [NewV5] for a name held in a byte slice, so callers need not
 // convert it to a string first. It returns the same UUID as NewV5 for the
-// same bytes and allocates nothing for names up to 240 bytes.
+// same bytes and allocates nothing, even when name is a caller's stack buffer.
 func NewV5Bytes(namespace UUID, name []byte) UUID {
 	if len(name) == 0 {
 		return NewV5(namespace, "")
