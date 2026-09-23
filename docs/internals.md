@@ -63,7 +63,7 @@ The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >
 
 ## Batch: Bulk Generation
 
-`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~30x (V4) and ~13x (V7) speedups at n=100 over calling the single-UUID functions in a loop, growing with n (~40x and ~20x at n=1000).
+`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~30x (V4) and ~15x (V7) speedups at n=100 over calling the single-UUID functions in a loop, growing with n (~40x and ~23x at n=1000).
 
 ## V5: Zero-Alloc Hashing
 
@@ -73,7 +73,9 @@ This replaced an earlier `hash.Cloner` approach that pre-hashed the namespace: s
 
 ## Batch: Filling the Result Directly
 
-`NewV4Batch` lets `crypto/rand` write straight into the `[]UUID` backing array via `unsafe.Slice`, so the only allocation is the result itself. A `[]UUID` is a contiguous array of `[16]byte`, so the reinterpretation is exact. `NewV7Batch` keeps a separate 8-byte-per-UUID buffer for `rand_b`: reading half as many random bytes measured faster than filling all 16 and overwriting the timestamp.
+`FillV4` lets `crypto/rand` write straight into the `[]UUID` backing array via `unsafe.Slice`, so it allocates nothing and `NewV4Batch` allocates only its result. A `[]UUID` is a contiguous array of `[16]byte`, so the reinterpretation is exact.
+
+`FillV7` needs only 8 random bytes per UUID (`rand_b`), since bytes 0-7 are the timestamp and sequence. It reads all of them in one `crypto/rand` call into the upper half of the destination's own memory, then encodes front to back: UUID `i` reads its 8 bytes before it writes its 16-byte slot, and that write only reaches random bytes belonging to UUIDs at or before `i`, which are already consumed. This is allocation-free, and measured faster than a separate heap buffer (the previous design), than chunking through a stack buffer (more `crypto/rand` calls, which cost the most under parallel load), and than filling all 16 bytes and overwriting the timestamp. `NewV7Batch` allocates only its result.
 
 ## Parse: Lookup Table
 

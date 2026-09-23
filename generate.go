@@ -47,20 +47,42 @@ func NewV5(namespace UUID, name string) UUID {
 	return u
 }
 
+// NewV5Bytes is [NewV5] for a name held in a byte slice, so callers need not
+// convert it to a string first. It returns the same UUID as NewV5 for the
+// same bytes and allocates nothing for names up to 240 bytes.
+func NewV5Bytes(namespace UUID, name []byte) UUID {
+	if len(name) == 0 {
+		return NewV5(namespace, "")
+	}
+	// NewV5 only hashes name and never retains it, so viewing the bytes as a
+	// string without copying is safe for the duration of the call.
+	return NewV5(namespace, unsafe.String(&name[0], len(name)))
+}
+
 // NewV4Batch returns n random (Version 4) UUIDs.
 // It amortizes the cost of crypto/rand by reading all random bytes in a
 // single call, making it significantly faster than calling [NewV4] in a loop.
-// It returns nil if n <= 0.
+// It returns nil if n <= 0. To reuse a buffer instead, see [FillV4].
 func NewV4Batch(n int) []UUID {
 	if n <= 0 {
 		return nil
 	}
 	uuids := make([]UUID, n)
-	_, _ = rand.Read(rawBytes(uuids))
-	for i := range uuids {
-		stamp(&uuids[i], V4)
-	}
+	FillV4(uuids)
 	return uuids
+}
+
+// FillV4 overwrites every element of dst with a new random (Version 4) UUID.
+// It is the allocation-free form of [NewV4Batch] for callers that reuse a
+// buffer, and like it reads all random bytes in a single crypto/rand call.
+func FillV4(dst []UUID) {
+	if len(dst) == 0 {
+		return
+	}
+	_, _ = rand.Read(rawBytes(dst))
+	for i := range dst {
+		stamp(&dst[i], V4)
+	}
 }
 
 // rawBytes returns the contiguous backing memory of a non-empty UUID slice
@@ -221,6 +243,13 @@ func NewV7Batch(n int) []UUID {
 	return defaultGen.NewV7Batch(n)
 }
 
+// FillV7 overwrites every element of dst with monotonically increasing
+// Version 7 UUIDs from the package-level default generator. See
+// [Generator.FillV7].
+func FillV7(dst []UUID) {
+	defaultGen.FillV7(dst)
+}
+
 // Generator produces Version 7 UUIDs with per-instance monotonicity.
 // Multiple goroutines may safely call NewV7 concurrently on the same Generator.
 //
@@ -302,9 +331,10 @@ func (g *Generator) NewV7() UUID {
 }
 
 // NewV7Batch returns n Version 7 UUIDs that are monotonically increasing.
-// It amortizes the cost of crypto/rand and [time.Now] by performing a single
-// call of each, making it significantly faster than calling [Generator.NewV7]
-// in a loop. It returns nil if n <= 0.
+// It amortizes the cost of crypto/rand and [time.Now] across the batch,
+// making it significantly faster than calling [Generator.NewV7] in a loop.
+// It returns nil if n <= 0. To reuse a buffer instead, see
+// [Generator.FillV7].
 //
 // All n UUIDs derive from one clock reading: consecutive counter values can
 // carry into the millisecond field, so for large n the encoded timestamps
@@ -314,12 +344,30 @@ func (g *Generator) NewV7Batch(n int) []UUID {
 		return nil
 	}
 	uuids := make([]UUID, n)
+	g.FillV7(uuids)
+	return uuids
+}
 
-	// One bulk random read for all rand_b fields. Reading only the 8
-	// random bytes per UUID into a side buffer is faster than filling the
-	// whole result and overwriting bytes 0–7.
-	randBuf := make([]byte, n*8)
-	_, _ = rand.Read(randBuf)
+// FillV7 overwrites every element of dst with Version 7 UUIDs that are
+// monotonically increasing, continuing this Generator's sequence. It is the
+// allocation-free form of [Generator.NewV7Batch] for callers that reuse a
+// buffer, with the same clock behavior: one clock reading for all of dst.
+func (g *Generator) FillV7(dst []UUID) {
+	if len(dst) == 0 {
+		return
+	}
+	n := len(dst)
+
+	// Read the 8 random rand_b bytes each UUID needs in one crypto/rand call,
+	// into the upper half of dst's own memory. Encoding then runs front to
+	// back: UUID i reads its bytes at src[8i:8i+8] before it writes
+	// raw[16i:16i+16], and that write only reaches source bytes of UUIDs at
+	// or before i (source offset 8n+8j lies in UUID i's slot only for
+	// j = 2i-n or 2i-n+1, both at most i), which are already consumed. This
+	// measured faster than a separate buffer, than chunking through a stack
+	// buffer (more crypto/rand calls), and than filling all 16 bytes.
+	src := rawBytes(dst)[n*8:]
+	_, _ = rand.Read(src)
 
 	seq := v7Seq(time.Now().UnixNano())
 
@@ -329,9 +377,8 @@ func (g *Generator) NewV7Batch(n int) []UUID {
 	seq = reserve(&g.lastSeq, seq, n)
 	g.mu.Unlock()
 
-	for i := range uuids {
-		copy(uuids[i][8:], randBuf[i*8:i*8+8])
-		setV7(&uuids[i], seq+int64(i))
+	for i := range dst {
+		copy(dst[i][8:], src[i*8:i*8+8])
+		setV7(&dst[i], seq+int64(i))
 	}
-	return uuids
 }

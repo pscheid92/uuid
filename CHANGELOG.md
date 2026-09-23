@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README callout and package docs on the Go 1.27 standard library `uuid` package: goimports resolves a missing `uuid` import to it unless sibling files already use every `uuid` name the new file needs, and its type has no `Scan`/`Value`
 - Documented that `%x` on a UUID hex-encodes its 36-character string form, and that `%x` on `id[:]` gives the 32 hex digits. A `fmt.Formatter` implementation was considered and rejected: it would be promoted to every type embedding `UUID` and override that type's own `String` and `Error` methods; `TestUUIDIsNotAFormatter` records why
 - Documented which entry points are strict and which are lenient: `Parse`, `MustParse`, and `UnmarshalText` (JSON and other text encodings) accept only the 36-character form; `ParseLenient` and `Scan` accept all four. `Example (LenientJSON)` shows a wrapper type that accepts every form in JSON.
+- `FillV4(dst)`, `FillV7(dst)`, and `Generator.FillV7(dst)` overwrite a caller's slice with new UUIDs and allocate nothing, for callers that reuse a buffer. `NewV4Batch` and `NewV7Batch` are now built on them.
+- `ErrInvalid`: every error for malformed input (`ParseError` from parsing, text decoding, and `Scan`; `LengthError` from `FromBytes` and binary decoding) matches it through `errors.Is`. `Scan`'s errors for SQL NULL and unsupported source types do not.
+- `NewV5Bytes(namespace, name []byte)`, the same as `NewV5` for a name held in a byte slice, without a string conversion; zero-alloc for names up to 240 bytes
+
+### Changed
+
+- `NewV7Batch` reads `rand_b` into the upper half of its result and encodes in place, instead of through a second buffer: one allocation instead of two, and 10–13% faster serially (~691 ns vs ~778 ns at n=100) with no loss under parallel load
+- Batch benchmarks keep their result, so an inlined `make` is not stack-allocated in a way no real caller sees
 
 ## [0.6.0] - 2026-09-22
 

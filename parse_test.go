@@ -1,6 +1,8 @@
 package uuid
 
 import (
+	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -327,5 +329,49 @@ func TestParseErrorInputRuneBoundary(t *testing.T) {
 	}
 	if perr.Input != want {
 		t.Errorf("UnmarshalText ParseError.Input = %q, want %q", perr.Input, want)
+	}
+}
+
+func TestErrInvalid(t *testing.T) {
+	const bad = "6ba7b810-9dad-11d1-80b4-00c04fd430cg"
+	mustParsePanic := func() (err error) {
+		defer func() { err, _ = recover().(error) }()
+		MustParse(bad)
+		return nil
+	}
+	var u UUID
+	var doc struct{ ID UUID }
+	invalid := map[string]error{
+		"Parse":            func() error { _, err := Parse(bad); return err }(),
+		"Parse length":     func() error { _, err := Parse("short"); return err }(),
+		"ParseLenient":     func() error { _, err := ParseLenient("{" + bad + "}"); return err }(),
+		"MustParse panic":  mustParsePanic(),
+		"UnmarshalText":    u.UnmarshalText([]byte(bad)),
+		"json.Unmarshal":   json.Unmarshal([]byte(`{"ID":"`+bad+`"}`), &doc),
+		"jsonv2.Unmarshal": jsonv2.Unmarshal([]byte(`{"ID":"`+bad+`"}`), &doc),
+		"FromBytes":        func() error { _, err := FromBytes([]byte{1, 2, 3}); return err }(),
+		"UnmarshalBinary":  u.UnmarshalBinary([]byte{1, 2, 3}),
+		"Scan(string)":     u.Scan(bad),
+		"Scan([]byte)":     u.Scan([]byte(bad)),
+	}
+	for name, err := range invalid {
+		if !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: errors.Is(%v, ErrInvalid) = false, want true", name, err)
+		}
+	}
+
+	// Scan's NULL and type errors are not malformed UUIDs, and ErrInvalid
+	// matches nothing else.
+	for name, err := range map[string]error{
+		"Scan(nil)":   u.Scan(nil),
+		"Scan(int)":   u.Scan(42),
+		"other error": errors.New("uuid: invalid UUID"),
+	} {
+		if errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: errors.Is(%v, ErrInvalid) = true, want false", name, err)
+		}
+	}
+	if (&ParseError{}).Is(errors.New("x")) || (&LengthError{}).Is(errors.New("x")) {
+		t.Error("ParseError or LengthError matches an unrelated error")
 	}
 }
