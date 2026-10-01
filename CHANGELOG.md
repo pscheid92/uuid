@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented which entry points are strict and which are lenient: `Parse`, `MustParse`, and `UnmarshalText` (JSON and other text encodings) accept only the 36-character form; `ParseLenient` and `Scan` accept all four. `Example (LenientJSON)` shows a wrapper type that accepts every form in JSON.
 - `FillV4(dst)`, `FillV7(dst)`, and `Generator.FillV7(dst)` overwrite a caller's slice with new UUIDs and allocate nothing, for callers that reuse a buffer. `NewV4Batch` and `NewV7Batch` are now built on them.
 - `ErrInvalid`: every error for malformed input (`ParseError` from parsing, text decoding, and `Scan`; `LengthError` from `FromBytes` and binary decoding) matches it through `errors.Is`. `Scan`'s errors for SQL NULL and unsupported source types do not.
+- `NewPoolFor(gen)` returns a `Pool` whose V7 UUIDs continue `gen`'s sequence, for an ordering domain other than the default; `NewPoolFor(nil)` means the default generator.
 - `NewV5Bytes(namespace, name []byte)`, the same as `NewV5` for a name held in a byte slice, without a string conversion; zero-alloc, including from a caller's stack buffer
 
 ### Changed
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NewV7Batch` reads `rand_b` into the upper half of its result and encodes in place, instead of through a second buffer: one allocation instead of two, and 10–13% faster serially (~691 ns vs ~778 ns at n=100) with no loss under parallel load
 - Batch benchmarks keep their result, so an inlined `make` is not stack-allocated in a way no real caller sees
 - `NewV5` streams names longer than 240 bytes into the hash through a local buffer instead of `io.WriteString`, so its `name` parameter no longer escapes and long names no longer allocate: zero allocations at any length (was 2 beyond 240 bytes), and ~15% faster for a 1000-byte name
+- **Behavior change:** `Pool.NewV7` takes its ordering from a `Generator` instead of keeping its own. `NewPool()` and the zero-value `Pool` use the package-level default generator, so `pool.NewV7()` and `uuid.NewV7()` now produce one ordered sequence, and so do separate pools. Previously each pool was its own ordering domain, and UUIDs from a pool and from `NewV7` could interleave out of order in the same table. Cost: ~4 ns per call single-threaded, and nothing measurable for one pool shared across goroutines. Code that gives **each goroutine its own `NewPool()`** now shares the default generator's lock and slows from ~12 ns to ~120 ns per `NewV7` on 8 cores; if those pools need no ordering with each other, use `NewPoolFor(uuid.NewGenerator())` per goroutine, which restores the old speed and independence.
 
 ## [0.6.0] - 2026-09-22
 

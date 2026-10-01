@@ -20,12 +20,12 @@ Single flat package at the module root. Each file has a focused responsibility:
 - `uuid.go` — package doc, UUID type, Nil/Max, Namespace constants, Version/Variant types (VNil/V4/V5/V7/V8/VMax), accessors (Version/Variant/IsNil/Bytes/Time), Compare (method and package func)
 - `parse.go` — Parse (strict 36-char), ParseLenient (URN/braced/compact), MustParse, FromBytes; hex lookup table + offset array; ParseError, LengthError, and the ErrInvalid sentinel both match via Is
 - `format.go` — String, URN, encodeHex, AppendText/Binary, Marshal/Unmarshal (Text + Binary); Scan (database/sql.Scanner), Value (driver.Valuer)
-- `generate.go` — NewV4/V5/V7/V8, NewV5Bytes, NewV4Batch/FillV4, NewV7Batch/FillV7 (package-level, use default generator), Generator type with per-instance V7 monotonicity (RFC 9562 Method 3) and NewV7Batch, Pool type with buffered NewV4/NewV7 (zero value ready to use), stack-buffer SHA-1 for V5. Shared inlinable helpers: `v7Seq` (clock → ordering value), `reserve` (monotonic step), `setV7` (encode bytes 0–7), `stamp` (version + variant bits); every generator goes through them
+- `generate.go` — NewV4/V5/V7/V8, NewV5Bytes, NewV4Batch/FillV4, NewV7Batch/FillV7 (package-level, use default generator), Generator type with per-instance V7 monotonicity (RFC 9562 Method 3) and NewV7Batch, Pool type with buffered NewV4/NewV7 (zero value ready to use; V7 ordering comes from a Generator: the default one, or the one given to NewPoolFor), stack-buffer SHA-1 for V5. Shared inlinable helpers: `v7Seq` (clock → ordering value), `reserve` (monotonic step), `setV7` (encode bytes 0–7), `stamp` (version + variant bits); every generator goes through them
 - `bench/` — separate Go module with comparison benchmarks against google/uuid and gofrs/uuid
 
 ## Design Principles
 
-- **No global configuration.** No SetRand, no swappable clock or random source. V4/V5/V8 are stateless. V7 uses a Generator with per-instance lock; the only package-level state is the default Generator behind NewV7/NewV7Batch.
+- **No global configuration.** No SetRand, no swappable clock or random source. V4/V5/V8 are stateless. V7 uses a Generator with per-instance lock; the only package-level state is the default Generator behind NewV7/NewV7Batch/FillV7, which also orders NewPool and zero-value Pool V7 UUIDs.
 - **No NullUUID.** Use `*UUID` pointer for SQL NULL.
 - **Strict parsing by default.** `Parse()` = 36-char hyphenated only. `ParseLenient()` for other forms. `Scan` treats a `string` as text always; only a 16-byte `[]byte` is read as raw bytes (BINARY(16)).
 - **Always crypto/rand.** No SetRand. Pool and Batch amortize cost without changing the CSPRNG source.
@@ -53,6 +53,6 @@ V4 (random), V5 (SHA-1 name-based), V7 (timestamp+random), V8 (custom). No V1/V2
 - Tests are internal (package `uuid`) except `example_test.go` (package `uuid_test`)
 - Use `cryptotest.SetGlobalRandom(t, seed)` for deterministic randomness
 - Use `synctest.Test(t, func(t *testing.T) { ... })` for fake-clock V7 tests
-- V7 behaviour tests run against every source via `v7Sources()` (Generator, zero-value Generator, NewV7Batch, Generator.FillV7, Pool, zero-value Pool); add new V7 paths there
+- V7 behaviour tests run against every source via `v7Sources()` (Generator, zero-value Generator, NewV7Batch, Generator.FillV7, NewPoolFor, zero-value Pool); add new V7 paths there
 - Fuzz tests must round-trip: parse then re-parse the String() output
 - Decoders never write through the receiver on error: decode into a local, assign on success

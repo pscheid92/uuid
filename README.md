@@ -178,7 +178,7 @@ Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://g
 | NewV4Batch(100) | **752 ns** | - | 24,910 ns² | 24,538 ns² |
 | NewV5 | 63 ns | - | 100 ns | **62 ns** |
 | NewV7 | 104 ns | **101 ns** | 296 ns | 117 ns |
-| NewV7 (Pool) | **45 ns** | - | 73 ns¹ | - |
+| NewV7 (Pool) | **49 ns** | - | 73 ns¹ | - |
 | NewV7Batch(100) | **691 ns** | - | 29,768 ns² | 11,615 ns² |
 | Parse | **18 ns** | 25 ns | 19 ns | 27 ns |
 | UnmarshalText | **18 ns** | 25 ns | 19 ns | 27 ns |
