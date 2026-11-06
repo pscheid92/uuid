@@ -2,7 +2,7 @@ package uuid_test
 
 import (
 	"database/sql/driver"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -205,10 +205,14 @@ func (l *LenientUUID) UnmarshalText(b []byte) (err error) {
 func Example_lenientJSON() {
 	const in = `{"id":"{6ba7b810-9dad-11d1-80b4-00c04fd430c8}"}`
 
-	var strict struct{ ID uuid.UUID }
+	var strict struct {
+		ID uuid.UUID `json:"id"`
+	}
 	fmt.Println(json.Unmarshal([]byte(in), &strict) != nil)
 
-	var lenient struct{ ID LenientUUID }
+	var lenient struct {
+		ID LenientUUID `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(in), &lenient); err != nil {
 		panic(err)
 	}
