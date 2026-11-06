@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "schedule:weekly",
+    "group:allNonMajor"
+  ],
+  "timezone": "Europe/Berlin",
+  "packageRules": [
+    {
+      "description": "The go directive is the oldest Go a user of the library needs, and CI tests the versions in its matrix; raising it is a decision, not a routine update",
+      "matchDatasources": ["golang-version"],
+      "enabled": false
+    }
+  ]
+}
