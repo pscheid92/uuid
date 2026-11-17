@@ -5,24 +5,66 @@
 
 # uuid
 
-A modern, zero-dependency Go UUID library with zero-alloc hot paths, implementing [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562). Built for Go 1.27+ with first-class support for V7 timestamp-ordered UUIDs, pooled generation, and batch APIs.
+A companion to Go's standard library [`uuid`](https://pkg.go.dev/uuid) package. The standard library (Go 1.27+) generates V4 and V7 UUIDs and parses and prints them. This package adds what it leaves out: V5 and V8, version and timestamp accessors, strict parsing with typed errors, V7 backfilling and per-instance ordering, and bulk generation. It implements [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562) and has no dependencies.
+
+Both packages define `UUID` as `[16]byte`, so a value converts between them at no cost and each can be used where it fits.
 
 ```
 go get github.com/pscheid92/uuid
 ```
 
+## Do You Need It?
+
+If you only create random or time-ordered IDs and print or parse them, the standard library is enough, and you should use it. Add this package when you need something in the right-hand column:
+
+| You need to | Standard library `uuid` | This package |
+|-------------|-------------------------|--------------|
+| Derive the same ID from the same name | - | `NewV5`, `NewV5Bytes` |
+| Build a UUID from your own bits | - | `NewV8` |
+| Inspect a UUID | - | `Version`, `Variant`, `Time` (V7 timestamp) |
+| Reject non-canonical input | `Parse` accepts four forms | `Parse` accepts only the 36-character form; `ParseLenient` accepts all four |
+| Tell bad input from other errors | a plain `invalid uuid` error | `ErrInvalid`, `ParseError` with the input and position |
+| Give existing rows V7 keys that sort by creation time | - | `NewV7At` |
+| Keep separate V7 orderings | one sequence per process | `Generator`, one sequence each |
+| Keep V7 order when the clock steps back | not guaranteed | guaranteed within a `Generator` |
+| Generate many UUIDs at once | - | `NewV4Batch`, `NewV7Batch`, `FillV4`, `FillV7`, `Pool` |
+| Encode as raw bytes through `encoding.BinaryMarshaler` (gob and similar) | `u[:]` only | `MarshalBinary`, `UnmarshalBinary`, `AppendBinary`, `FromBytes` |
+
+Two things are not on the list. Since Go 1.27, `database/sql` scans into the standard library's `UUID` itself and its default converter binds one as a string, so SQL support is not a reason to switch; this package's `Scan` and `Value` do the same job for its own type. And speed: single UUIDs cost the same in both packages; see [Performance](#performance).
+
+## Using It with the Standard Library
+
+This package also has `NewV4`, `NewV7`, `Parse`, `MustParse`, and `String`, so code that needs its extras can use it alone. Where a dependency hands you a standard library UUID, or expects one, convert:
+
+```go
+import (
+    stdlib "uuid"
+
+    "github.com/pscheid92/uuid"
+)
+
+id := uuid.UUID(stdlib.New())      // stdlib -> this package: gain Version, Time, ...
+std := stdlib.UUID(uuid.NewV7())   // this package -> stdlib
+```
+
+The conversion is free: both types are `[16]byte`. UUIDs from the standard library's `NewV7` and from this package's are not strictly ordered relative to each other, so pick one source for keys that must sort.
+
 > [!IMPORTANT]
-> Go 1.27 added a standard library package that is also named `uuid`, with the same function names (`NewV7`, `Parse`, `MustParse`, ...). When goimports (or an editor using its import logic, such as gopls) adds a missing import for `uuid.NewV7()`, it picks the standard library's `"uuid"` unless other files in the same package already import this one and use every `uuid` name the new file needs. So in a new package, or for the first call of a function no other file uses yet, you get the standard library. That file may still compile, but its UUIDs are the standard library's type, which has no `Scan`/`Value` for `database/sql` and parses leniently. Check that the import reads `github.com/pscheid92/uuid`, and alias the standard library package (`stdlib "uuid"`) in files that need both. See [Standard Library Interop](#standard-library-interop).
+> The two packages share the name `uuid` and many function names (`NewV7`, `Parse`, `MustParse`, ...). When goimports (or an editor using its import logic, such as gopls) adds a missing import for `uuid.NewV7()`, it picks the standard library's `"uuid"` unless other files in the same package already import this one and use every `uuid` name the new file needs. So in a new package, or for the first call of a function no other file uses yet, you get the standard library. That file may still compile, but its UUIDs are the standard library's type: its `Parse` is lenient, and `Version`, `Time`, and the rest of this package's API are missing. Check that the import reads `github.com/pscheid92/uuid`, and alias the standard library package (`stdlib "uuid"`) in files that need both.
 
 ## Quick Start
 
 ```go
 import "github.com/pscheid92/uuid"
 
-id := uuid.NewV4()                                       // random UUID
-id  = uuid.NewV7()                                       // timestamp-ordered, database-friendly
-id, err := uuid.Parse("550e8400-e29b-41d4-a716-446655440000") // parse a string
-fmt.Println(id.String())                                  // "550e8400-e29b-41d4-a716-446655440000"
+id := uuid.NewV7()                                             // timestamp-ordered key
+old := uuid.NewV7At(row.CreatedAt)                             // V7 key for a row that already exists
+ts, ok := id.Time()                                            // when a V7 UUID was created
+tenant := uuid.NewV5(uuid.NamespaceDNS, "customer.example")    // same name, same UUID
+id, err := uuid.Parse(r.PathValue("id"))                       // strict: canonical form only
+if errors.Is(err, uuid.ErrInvalid) {
+    http.Error(w, "invalid id", http.StatusBadRequest)
+}
 ```
 
 ## Supported Versions
@@ -135,39 +177,31 @@ UUIDs are sortable via `uuid.Compare` (or the `Compare` method, as in the standa
 slices.SortFunc(ids, uuid.Compare)
 ```
 
-### Standard Library Interop
+## Design
 
-Go 1.27 added a `uuid` package to the standard library. Both it and this package define `UUID` as `[16]byte`, so values convert in either direction at zero cost:
-
-```go
-import stdlib "uuid"
-
-id := uuid.UUID(stdlib.New())      // stdlib -> this package
-std := stdlib.UUID(uuid.NewV7())   // this package -> stdlib
-```
-
-Use the conversion at API boundaries where a dependency hands you a standard library UUID, and keep this package's type internally for `Version`, `Time`, strict parsing, SQL support, and the generation APIs the standard library leaves out.
-
-## Why This Library?
-
-Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](https://github.com/gofrs/uuid) have been around for years. The standard library covers V4, V7, lenient parsing, and text encoding with the same `[16]byte` type as this package, so it is the right choice when that is all you need. This library is for when it is not:
-
-- **Everything the standard library leaves out**: V5 and V8, `Version`/`Variant`/`Time` accessors, strict `Parse`, typed `ParseError` with the offending input, binary marshaling, `database/sql` `Scan`/`Value`, per-instance `Generator` monotonicity, `NewV7At` for backfilling, and the `Pool` and `Batch` high-throughput paths. Convert between the two types for free (see [Standard Library Interop](#standard-library-interop)).
-
-- **Zero allocations**: NewV4, NewV5, NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5; google/uuid allocates on every one, except V4 and V7 when its pool is enabled.
-- **High-throughput APIs**: Pool and Batch amortize `crypto/rand` cost; `FillV4`/`FillV7` reuse a buffer with no allocation at all. How much that buys depends on what a `crypto/rand` read costs on your platform: on Linux, Pool is ~1.6–2x faster for V4 and ~1.1–1.2x for V7, and Batch at n=100 ~2x for V4 and ~5x for V7; on macOS, where that read is several times more expensive, Pool is ~14x (V4) and ~2x (V7) and Batch ~30x (V4) and ~15x (V7). google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating), ~1.3–1.8x slower than `Pool` here; no other library pools or generates in batches.
-- **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
-- **No global configuration**: No `SetRand`, no swappable clock or random source. V4/V5/V8 are stateless. V7 monotonicity lives in a `Generator`: the package-level `NewV7` uses a shared default one (like `http.DefaultClient`), and you can create your own for isolated ordering.
-- **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
-- **Simple value type**: `UUID` is `[16]byte`: comparable, copyable, safe as map key. No `NullUUID` - use `*UUID` for nullable SQL/JSON fields.
-- **Modern Go, zero dependencies**: Targets Go 1.27+, uses `crypto/rand` (infallible), `encoding.TextAppender`, `testing/synctest`. Only stdlib. No legacy baggage: V1/V2/V3/V6 are parsed and identified, never generated.
+- **Strict by default**: `Parse` and text decoding accept only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`, because anything else in API input is usually a client bug. `ParseLenient` and `Scan` accept URN, braced, and compact forms.
+- **V7 ordering you can reason about**: Sub-millisecond ordering via RFC 9562 Method 3, with a counter that keeps UUIDs increasing when calls outrun the clock or the clock steps back. The ordering lives in a `Generator`: the package-level `NewV7` uses a shared default one (like `http.DefaultClient`), and you can create your own for isolated ordering.
+- **No global configuration**: No `SetRand`, no swappable clock or random source. Randomness always comes from `crypto/rand`. V4/V5/V8 are stateless.
+- **Simple value type**: `UUID` is `[16]byte`, the same as the standard library's: comparable, copyable, safe as map key. No `NullUUID` - use `*UUID` for nullable SQL/JSON fields.
+- **No allocations where avoidable**: generation, parsing, and `AppendText` allocate nothing; `FillV4`/`FillV7` reuse a buffer.
+- **Only the standard library underneath**: zero dependencies, Go 1.27+. V1/V2/V3/V6 are parsed and identified, never generated.
 
 ## Further Reading
 
 - **[Advanced Usage](docs/advanced.md)**: V7 monotonicity, high-throughput Pool and Batch APIs, properties, namespace constants.
 - **[Internals](docs/internals.md)**: V7 bit layout, sub-millisecond precision, monotonic counter fallback, Pool amortization, zero-alloc V5 hashing, parse lookup table.
 
-## Benchmarks
+## Performance
+
+Performance is not the reason to choose this package over the standard library.
+
+- **Single UUIDs** cost the same in both, since both spend their time in the same `crypto/rand` read.
+- **Encoding** (String, MarshalText) takes about 20% less time here on Linux and 30–35% less on macOS, which is 5–10 ns per call.
+- **Parsing** is 25–30% faster here on Apple silicon and 5–10% slower on the x86-64 runners; either way a few nanoseconds.
+- **Batches** are the exception. A batch of 100 is ~2x faster than 100 single V4 calls on Linux and ~5x for V7. On macOS, where the 16-byte `crypto/rand` read behind a V4 UUID costs three to four times as much, it is ~30x and ~15x.
+- **`Pool`** gains ~1.6–2x for V4 and ~1.1–1.2x for V7 on Linux (~14x and ~2x on macOS), so measure on the hardware you deploy to before adding one.
+
+The tables also cover [google/uuid](https://github.com/google/uuid) and [gofrs/uuid](https://github.com/gofrs/uuid), for code moving from them. google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating); no other library generates in batches.
 
 Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://github.com/google/uuid), and [gofrs/uuid](https://github.com/gofrs/uuid) on Apple M2 (fastest of 8–12 runs; the fastest entry per row is bold):
 
@@ -203,7 +237,7 @@ The same benchmarks on Linux (GitHub Actions `ubuntu-latest`, AMD EPYC 9V45, 4 v
 
 ¹ With `google.EnableRandPool()`, which also removes the allocation. ² No batch API; the benchmark makes 100 single calls.
 
-All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. Single-call generation is at parity with the standard library (differences of a few ns are run-to-run noise), since both read `crypto/rand` the same way. The 16-byte `crypto/rand` read behind a V4 UUID is three to four times cheaper on these Linux runners than on the M2, which is why Pool and Batch gain so much more on macOS: there is less cost to amortize on Linux. Encoding (String, MarshalText) takes about 20% less time than the standard library's on Linux and 30–35% less on macOS, thanks to an unrolled encoder. Parsing is 25–30% faster than the standard library's on Apple silicon and 5–10% slower than it on the x86-64 runners; google/uuid's parser is within a few percent on both. google/uuid allocates on every generation call, except V4 and V7 with its pool enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
+All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. google/uuid allocates on every generation call, except V4 and V7 with its pool enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
 
 ```bash
 cd bench && go test -bench=. -benchmem ./...
