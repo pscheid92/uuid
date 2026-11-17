@@ -11,13 +11,23 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # x86-64 and arm64.
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        # The oldest Go the module supports (the go directive in go.mod) and
+        # the current release, so a new patch or minor version is tested too.
+        go: [oldest, stable]
+    name: test (${{ matrix.os }}, Go ${{ matrix.go }})
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ matrix.go == 'oldest' && 'go.mod' || '' }}
+          go-version: ${{ matrix.go == 'stable' && 'stable' || '' }}
 
       - name: Vet
         run: go vet ./...
@@ -45,6 +55,45 @@ jobs:
       - name: Fuzz decoders
         run: go test -fuzz=FuzzDecodersAgree -fuzztime=30s ./...
 
+  # The package uses unsafe and 64-bit arithmetic, so also run the tests on a
+  # 32-bit target (386 binaries run natively on the x86-64 runner) and
+  # type-check a big-endian one.
+  portability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Test (linux/386)
+        run: GOARCH=386 go test -count=1 ./...
+
+      - name: Vet (linux/s390x, big-endian)
+        run: GOARCH=s390x go vet ./...
+
+  # Reports how the exported API differs from the latest released version and
+  # which version number the changes call for. It fails only if the module
+  # itself is broken; an incompatible change shows up in the job summary.
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: gorelease
+        run: |
+          # The report goes outside the checkout: gorelease refuses to run
+          # in a repository with untracked or modified files.
+          go run golang.org/x/exp/cmd/gorelease@latest | tee "$RUNNER_TEMP/gorelease.txt"
+          { echo '### API changes since the last release'; echo '```'; cat "$RUNNER_TEMP/gorelease.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -63,24 +112,62 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The current Go release: checking against the oldest supported one
+      # would report standard library vulnerabilities that are already fixed.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+  # Every benchmark runs 6 times so benchstat can report a median and its
+  # spread; the README's Linux table can be refreshed from this job's summary. On a
+  # pull request the root benchmarks also run on the base branch, on the same
+  # runner, and the summary shows the difference. Shared runners are noisy, so
+  # this reports and never fails the build.
   bench:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Benchmarks (root)
-        run: go test -bench=. -benchmem -count=1 -benchtime=1s ./...
+        run: go test -run '^$' -bench=. -benchmem -count=6 -benchtime=500ms ./... | tee "$RUNNER_TEMP/head.txt"
+
+      - name: Benchmarks (root, base branch)
+        if: github.event_name == 'pull_request'
+        run: |
+          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
+          cd "$RUNNER_TEMP/base"
+          go test -run '^$' -bench=. -benchmem -count=6 -benchtime=500ms ./... | tee "$RUNNER_TEMP/base.txt"
 
       - name: Benchmarks (comparison)
-        run: cd bench && go test -bench=. -benchmem -count=1 -benchtime=1s ./...
+        run: cd bench && go test -run '^$' -bench=. -benchmem -count=6 -benchtime=500ms ./... | tee "$RUNNER_TEMP/comparison.txt"
+
+      - name: Summary
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          cd "$RUNNER_TEMP"
+          {
+            if [ -f base.txt ]; then
+              echo '### Root benchmarks: base branch vs this change'
+              echo '```'
+              benchstat base=base.txt head=head.txt
+              echo '```'
+            else
+              echo '### Root benchmarks'
+              echo '```'
+              benchstat head.txt
+              echo '```'
+            fi
+            echo '### Comparison with other libraries'
+            echo '```'
+            benchstat comparison.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

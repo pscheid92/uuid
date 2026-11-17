@@ -54,16 +54,20 @@ func reserve(last *int64, seq int64, n int) int64 {
 
 The millisecond timestamp is then re-derived from the updated `seq` (`ms = seq >> 12`), so the counter can overflow into the next millisecond transparently. The counter starts from the current sub-millisecond fraction, so a burst can take at most 4096 - `frac` values before it carries into the next millisecond; ordering continues seamlessly past that. The cost is that the encoded timestamp then runs ahead of the wall clock until real time catches up, which is why `UUID.Time` may report a slightly later time under sustained bursts.
 
+A compare-and-swap loop on an atomic counter was measured as a replacement for the generator's mutex and rejected. Uncontended it is at best ~5% faster (macOS) or the same (Linux), since the lock is a small part of a call that also reads `crypto/rand` and the clock. Under contention it was about twice as slow where it mattered: parallel `NewV7` on one generator on Linux (~183 ns vs ~91 ns, in an arm64 VM), and one pool per goroutine on the default generator on both Linux and macOS (~250 ns vs ~130 ns on an Apple M2). Parallel `NewV7` on macOS was unchanged, since `crypto/rand` dominates there. Every failed swap retries, while a mutex parks the waiter.
+
 ## Pool: Amortizing crypto/rand
 
-`crypto/rand` is the dominant cost in UUID generation (~240ns per V4 call). `Pool` reduces this by pre-generating random bytes in bulk:
+`crypto/rand` is the dominant cost in UUID generation: a V4 call takes ~240 ns on macOS (Apple M2) and ~56 ns on Linux (x86-64 CI runner), nearly all of it the 16-byte read. `Pool` reduces this by pre-generating random bytes in bulk:
 
 - **V4 pool**: Pre-stamps 256 complete UUIDs per refill (one `crypto/rand.Read` of 4KB). Each `Pool.NewV4()` call just returns the next pre-built UUID.
-- **V7 pool**: Pre-generates 256 x 8-byte random chunks for `rand_b`. Timestamp and sub-ms sequence are computed live per call (they can't be pre-computed). This is why V7 pooling gives ~2x improvement vs V4's ~14x - `time.Now` is the remaining bottleneck.
+- **V7 pool**: Pre-generates 256 x 8-byte random chunks for `rand_b`. Timestamp and sub-ms sequence are computed live per call (they can't be pre-computed). This is why V7 pooling gains less than V4 pooling (~2x vs ~14x on macOS, ~1.2x vs ~2x on Linux) - `time.Now` is the remaining bottleneck.
+
+The size of the gain follows the cost of the read it removes, so it is much larger on macOS than on Linux. The macOS cost is specific to reads of more than about 10 bytes: an 8-byte read, as V7 needs, costs ~60 ns there.
 
 ## Batch: Bulk Generation
 
-`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~30x (V4) and ~15x (V7) speedups at n=100 over calling the single-UUID functions in a loop, growing with n (~40x and ~23x at n=1000).
+`NewV4Batch(n)` and `Generator.NewV7Batch(n)` read all random bytes in a single `crypto/rand.Read` call and stamp version/variant bits in a tight loop. For V7 batches, `time.Now` is also called once and the monotonic sequence is incremented per UUID. This avoids per-call overhead for both randomness and time, yielding ~30x (V4) and ~15x (V7) speedups on macOS at n=100 over calling the single-UUID functions in a loop, growing with n (~40x and ~23x at n=1000). On Linux, where a single read carries much less fixed overhead to amortize, the speedups at n=100 are ~2x (V4) and ~5x (V7); V7 gains more because it also saves 99 clock readings and reads half as many random bytes.
 
 ## V5: Zero-Alloc Hashing
 

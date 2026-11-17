@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-17
+
 ### Added
 
 - README callout and package docs on the Go 1.27 standard library `uuid` package: goimports resolves a missing `uuid` import to it unless sibling files already use every `uuid` name the new file needs, and its type has no `Scan`/`Value`
@@ -15,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FillV4(dst)`, `FillV7(dst)`, and `Generator.FillV7(dst)` overwrite a caller's slice with new UUIDs and allocate nothing, for callers that reuse a buffer. `NewV4Batch` and `NewV7Batch` are now built on them.
 - `ErrInvalid`: every error for malformed input (`ParseError` from parsing, text decoding, and `Scan`; `LengthError` from `FromBytes` and binary decoding) matches it through `errors.Is`. `Scan`'s errors for SQL NULL and unsupported source types do not.
 - `NewPoolFor(gen)` returns a `Pool` whose V7 UUIDs continue `gen`'s sequence, for an ordering domain other than the default; `NewPoolFor(nil)` means the default generator.
+- `V1`, `V2`, `V3`, and `V6` version constants, to compare against `Version()` of a parsed legacy UUID (`id.Version() == uuid.V1`). The package still generates none of them.
 - `NewV5Bytes(namespace, name []byte)`, the same as `NewV5` for a name held in a byte slice, without a string conversion; zero-alloc, including from a caller's stack buffer
 
 ### Changed
@@ -23,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Batch benchmarks keep their result, so an inlined `make` is not stack-allocated in a way no real caller sees
 - `NewV5` streams names longer than 240 bytes into the hash through a local buffer instead of `io.WriteString`, so its `name` parameter no longer escapes and long names no longer allocate: zero allocations at any length (was 2 beyond 240 bytes), and ~15% faster for a 1000-byte name
 - **Behavior change:** `Pool.NewV7` takes its ordering from a `Generator` instead of keeping its own. `NewPool()` and the zero-value `Pool` use the package-level default generator, so `pool.NewV7()` and `uuid.NewV7()` now produce one ordered sequence, and so do separate pools. Previously each pool was its own ordering domain, and UUIDs from a pool and from `NewV7` could interleave out of order in the same table. Cost: ~4 ns per call single-threaded, and nothing measurable for one pool shared across goroutines. Code that gives **each goroutine its own `NewPool()`** now shares the default generator's lock and slows from ~12 ns to ~120 ns per `NewV7` on 8 cores; if those pools need no ordering with each other, use `NewPoolFor(uuid.NewGenerator())` per goroutine, which restores the old speed and independence.
+- `Bytes` and `MarshalBinary` return a slice of the method's own copy of the UUID instead of allocating a second one and copying into it: still one allocation and a slice the caller owns, ~20% faster (`MarshalBinary` ~7.4 ns to ~6.1 ns on an Apple M2)
+- Documentation: speedups for `Pool` and the batch APIs are now given per platform. The earlier figures (~14x and ~2x for `Pool`, ~30x and ~15x for batches of 100) were measured on macOS, where the 16-byte `crypto/rand` read of a V4 UUID costs about four times what it does on the Linux CI runners; on Linux they are ~2x and ~1.2x for `Pool` and ~2x and ~5x for batches. The README gains a Linux benchmark table from the CI runners, and no longer says parsing is faster than the standard library's everywhere: it is on Apple silicon and level on x86-64.
+- CI tests on both the oldest supported Go (the `go` directive) and the current release, on x86-64 and arm64, and runs govulncheck on the current release; previously everything ran on Go 1.27.0 on x86-64 only. New jobs run the tests on 32-bit linux/386, type-check big-endian linux/s390x, and report API changes since the last release with `gorelease`.
+- The CI benchmark job runs every benchmark 6 times and summarizes with `benchstat`; on a pull request it also benchmarks the base branch on the same runner and shows the difference. It reports only and never fails the build.
+- Internals: documented that an atomic compare-and-swap counter was measured against the `Generator` mutex and rejected (no faster uncontended on Linux, and about twice as slow in the contended cases that matter)
 
 ## [0.6.0] - 2026-09-22
 
@@ -149,7 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-alloc hot paths for NewV4, NewV7, Pool.NewV4, Pool.NewV7, Parse, MarshalText, UnmarshalText
 - 100% test coverage including fuzz tests
 
-[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/pscheid92/uuid/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/pscheid92/uuid/releases/tag/v0.7.0
 [0.6.0]: https://github.com/pscheid92/uuid/releases/tag/v0.6.0
 [0.5.0]: https://github.com/pscheid92/uuid/releases/tag/v0.5.0
 [0.4.0]: https://github.com/pscheid92/uuid/releases/tag/v0.4.0
