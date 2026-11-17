@@ -155,7 +155,7 @@ Go 1.27 ships a standard library [`uuid`](https://pkg.go.dev/uuid) package, and 
 - **Everything the standard library leaves out**: V5 and V8, `Version`/`Variant`/`Time` accessors, strict `Parse`, typed `ParseError` with the offending input, binary marshaling, `database/sql` `Scan`/`Value`, per-instance `Generator` monotonicity, `NewV7At` for backfilling, and the `Pool` and `Batch` high-throughput paths. Convert between the two types for free (see [Standard Library Interop](#standard-library-interop)).
 
 - **Zero allocations**: NewV4, NewV5, NewV7, Parse, UnmarshalText, and AppendText all allocate nothing. gofrs/uuid allocates on every generation call except NewV5; google/uuid allocates on every one, except V4 and V7 when its pool is enabled.
-- **High-throughput APIs**: Pool and Batch amortize `crypto/rand` cost; `FillV4`/`FillV7` reuse a buffer with no allocation at all. How much that buys depends on what a `crypto/rand` read costs on your platform: on Linux, Pool is ~2x faster for V4 and ~1.2x for V7, and Batch at n=100 ~2x for V4 and ~5x for V7; on macOS, where that read is several times more expensive, Pool is ~14x (V4) and ~2x (V7) and Batch ~30x (V4) and ~15x (V7). google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating), ~1.5–1.8x slower than `Pool` here; no other library pools or generates in batches.
+- **High-throughput APIs**: Pool and Batch amortize `crypto/rand` cost; `FillV4`/`FillV7` reuse a buffer with no allocation at all. How much that buys depends on what a `crypto/rand` read costs on your platform: on Linux, Pool is ~1.6–2x faster for V4 and ~1.1–1.2x for V7, and Batch at n=100 ~2x for V4 and ~5x for V7; on macOS, where that read is several times more expensive, Pool is ~14x (V4) and ~2x (V7) and Batch ~30x (V4) and ~15x (V7). google/uuid can pool V4 and V7 randomness behind a process-wide toggle (`EnableRandPool`, not safe to flip while generating), ~1.3–1.8x slower than `Pool` here; no other library pools or generates in batches.
 - **V7 monotonicity built-in**: Sub-millisecond ordering via RFC 9562 Method 3, with automatic counter fallback. No configuration needed.
 - **No global configuration**: No `SetRand`, no swappable clock or random source. V4/V5/V8 are stateless. V7 monotonicity lives in a `Generator`: the package-level `NewV7` uses a shared default one (like `http.DefaultClient`), and you can create your own for isolated ordering.
 - **Strict by default**: `Parse` accepts only `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Use `ParseLenient` when you explicitly want URN, braced, or compact forms.
@@ -185,25 +185,25 @@ Compared to the Go 1.27 standard library `uuid` package, [google/uuid](https://g
 | String | **20 ns** | 29 ns | 26 ns | 24 ns |
 | MarshalText | **17 ns** | 27 ns | 24 ns | 21 ns |
 
-The same benchmarks on Linux (GitHub Actions `ubuntu-latest`, AMD EPYC 9V74, 4 vCPUs; fastest of 3 CI runs, one pass each, so treat differences of a few ns as noise):
+The same benchmarks on Linux (GitHub Actions `ubuntu-latest`, AMD EPYC 9V45, 4 vCPUs; median of 6 runs from the CI `bench` job, spread mostly within ±5%; runner CPUs vary, and the ratios between rows and columns hold better than the absolute numbers):
 
 | Benchmark | pscheid92/uuid | stdlib (Go 1.27) | google/uuid | gofrs/uuid |
 |-----------|---------------|------------------|-------------|------------|
-| NewV4 | **56 ns** | **56 ns** | 74 ns | 69 ns |
-| NewV4 (Pool) | **28 ns** | - | 49 ns¹ | - |
-| NewV4Batch(100) | **2,522 ns** | - | 7,476 ns² | 6,985 ns² |
-| NewV5 | 106 ns | - | 156 ns | 116 ns |
-| NewV7 | **93 ns** | 96 ns | 142 ns | 115 ns |
-| NewV7 (Pool) | **77 ns** | - | 118 ns¹ | - |
-| NewV7Batch(100) | **1,605 ns** | - | 14,127 ns² | 11,387 ns² |
-| Parse | 23 ns | **22 ns** | 24 ns | 27 ns |
-| UnmarshalText | **22 ns** | **22 ns** | 23 ns | 26 ns |
-| String | **30 ns** | 36 ns | 34 ns | 36 ns |
-| MarshalText | **27 ns** | 33 ns | 30 ns | 32 ns |
+| NewV4 | **72 ns** | **73 ns** | 85 ns | 82 ns |
+| NewV4 (Pool) | **46 ns** | - | 62 ns¹ | - |
+| NewV4Batch(100) | **3,757 ns** | - | 8,377 ns² | 7,968 ns² |
+| NewV5 | **78 ns** | - | 115 ns | **77 ns** |
+| NewV7 | **101 ns** | 103 ns | 149 ns | 116 ns |
+| NewV7 (Pool) | **91 ns** | - | 130 ns¹ | - |
+| NewV7Batch(100) | **2,166 ns** | - | 14,850 ns² | 11,440 ns² |
+| Parse | 19 ns | **17 ns** | 18 ns | 21 ns |
+| UnmarshalText | 17 ns | **15 ns** | 17 ns | 20 ns |
+| String | **22 ns** | 26 ns | 24 ns | 27 ns |
+| MarshalText | **19 ns** | 24 ns | 22 ns | 23 ns |
 
 ¹ With `google.EnableRandPool()`, which also removes the allocation. ² No batch API; the benchmark makes 100 single calls.
 
-All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. Single-call generation is at parity with the standard library (differences of a few ns are run-to-run noise), since both read `crypto/rand` the same way. The 16-byte `crypto/rand` read behind a V4 UUID is about four times cheaper on these Linux runners than on the M2, which is why Pool and Batch gain so much more on macOS: there is less cost to amortize on Linux. Encoding (String, MarshalText) takes about 20% less time than the standard library's on Linux and 30–35% less on macOS, thanks to an unrolled encoder. Parsing is 25–30% faster than the standard library's on Apple silicon and level with it on x86-64; google/uuid's parser is within a few percent on both. google/uuid allocates on every generation call, except V4 and V7 with its pool enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
+All entries for this library and the standard library are zero-alloc except the batches, which allocate their result, and String and MarshalText, which must return a newly allocated result in every library; use `AppendText` to encode into your own buffer without allocating. Single-call generation is at parity with the standard library (differences of a few ns are run-to-run noise), since both read `crypto/rand` the same way. The 16-byte `crypto/rand` read behind a V4 UUID is three to four times cheaper on these Linux runners than on the M2, which is why Pool and Batch gain so much more on macOS: there is less cost to amortize on Linux. Encoding (String, MarshalText) takes about 20% less time than the standard library's on Linux and 30–35% less on macOS, thanks to an unrolled encoder. Parsing is 25–30% faster than the standard library's on Apple silicon and 5–10% slower than it on the x86-64 runners; google/uuid's parser is within a few percent on both. google/uuid allocates on every generation call, except V4 and V7 with its pool enabled; gofrs/uuid allocates on every generation call except NewV5. Run the comparison benchmarks yourself:
 
 ```bash
 cd bench && go test -bench=. -benchmem ./...

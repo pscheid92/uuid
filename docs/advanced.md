@@ -34,11 +34,11 @@ For hot paths, `Pool` amortizes the cost of `crypto/rand` by pre-generating rand
 
 ```go
 pool := uuid.NewPool()
-id := pool.NewV4() // ~2x faster than NewV4() on Linux, ~14x on macOS
-id  = pool.NewV7() // ~1.2x faster than NewV7() on Linux, ~2x on macOS (time.Now dominates)
+id := pool.NewV4() // ~1.6–2x faster than NewV4() on Linux, ~14x on macOS
+id  = pool.NewV7() // ~1.1–1.2x faster than NewV7() on Linux, ~2x on macOS (time.Now dominates)
 ```
 
-The gain is whatever a `crypto/rand` read costs on your platform, and for the 16-byte read of a V4 UUID that is about four times less on Linux than on macOS. Measure on the hardware you deploy to before adding a `Pool` for speed.
+The gain is whatever a `crypto/rand` read costs on your platform, and for the 16-byte read of a V4 UUID that is three to four times less on Linux than on macOS. Measure on the hardware you deploy to before adding a `Pool` for speed.
 
 For bulk workloads (database seeding, ETL, load testing), batch APIs generate many UUIDs with a single `crypto/rand` call:
 
