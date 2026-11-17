@@ -1,13 +1,51 @@
-// Package uuid implements UUID generation and parsing per RFC 9562.
+// Package uuid is a companion to the standard library uuid package (Go 1.27):
+// it implements the parts of RFC 9562 and the conveniences that package
+// leaves out.
 //
-// Supported versions:
-//   - V4 (Random): most common
-//   - V5 (SHA-1 name-based): deterministic, canonical IDs
-//   - V7 (Unix timestamp + random): recommended for new systems
-//   - V8 (Custom/experimental): user-provided data with version+variant bits
+// The standard library generates V4 and V7 UUIDs and parses and prints them.
+// When that is all a program needs, use it. This package adds:
+//   - V5 (SHA-1 name-based) and V8 (custom) UUIDs: [NewV5], [NewV8]
+//   - accessors: [UUID.Version], [UUID.Variant], [UUID.Time]
+//   - strict parsing with typed errors: [Parse], [ParseError], [ErrInvalid]
+//   - V7 UUIDs for a given time, to backfill existing records: [NewV7At]
+//   - V7 ordering per [Generator], kept even when the clock steps back
+//   - bulk generation: [NewV4Batch], [NewV7Batch], [FillV4], [FillV7], [Pool]
+//   - binary encoding: [UUID.MarshalBinary], [UUID.AppendBinary], [FromBytes]
+//
+// It also has [NewV4], [NewV7], [Parse], and [UUID.String], so code that
+// needs the additions can use this package alone. Neither speed nor
+// database/sql is a reason to choose it: single UUIDs cost the same in both
+// packages, and database/sql handles the standard library's type itself.
 //
 // UUID is a 16-byte value type that is comparable and safe for use as a map key.
 // The zero value is the Nil UUID (all zeros).
+//
+// # The standard library uuid package
+//
+// Both packages define UUID as [16]byte, so values convert in either
+// direction at no cost. Convert where a dependency hands over or expects a
+// standard library UUID:
+//
+//	import (
+//		stdlib "uuid"
+//
+//		"github.com/pscheid92/uuid"
+//	)
+//
+//	id := uuid.UUID(stdlib.New())    // standard library -> this package
+//	std := stdlib.UUID(uuid.NewV7()) // this package -> standard library
+//
+// V7 UUIDs from the two packages are not strictly ordered relative to each
+// other, so keys that must sort should come from one of them.
+//
+// The packages share the name uuid and many function names. goimports
+// resolves a missing uuid import to the standard library unless other files
+// in the package already import this one and use every uuid name the new
+// file needs, so a new package or a first use of a function gets the
+// standard library. Such a file may still compile, but its Parse is lenient
+// and its UUIDs have no [UUID.Version] or [UUID.Time]. Check the import
+// path, and alias the standard library package, as above, in files that use
+// both.
 //
 // # Generation
 //
@@ -41,27 +79,9 @@
 // where it relied on that. The LenientJSON example shows how to accept every
 // form in JSON.
 //
-// # The standard library uuid package
-//
-// Go 1.27 added a standard library package that is also named uuid, with the
-// same function names. goimports resolves a missing uuid import to the
-// standard library unless other files in the package already import this
-// one and use every uuid name the new file needs, so a new package or a
-// first use of a function gets the standard library. Such a file may still
-// compile, but its UUIDs have no [UUID.Scan] or [UUID.Value]. Check the
-// import path, and alias the standard library package in files that use
-// both:
-//
-//	import (
-//		stdlib "uuid"
-//
-//		"github.com/pscheid92/uuid"
-//	)
-//
-// Both types are [16]byte, so uuid.UUID(s) and stdlib.UUID(u) convert freely.
-//
 // # SQL NULL handling
 //
+// UUID implements [database/sql.Scanner] and [database/sql/driver.Valuer].
 // Instead of a separate NullUUID type, use a *UUID pointer:
 //
 //	var id *uuid.UUID  // nil = SQL NULL

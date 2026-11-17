@@ -39,4 +39,4 @@ go test -fuzz=FuzzParseLenient -fuzztime=30s ./...  # fuzz ParseLenient
 
 ## Design Principles
 
-See [Why This Library?](README.md#why-this-library) in the README for the design principles guiding this project.
+See [Design](README.md#design) in the README for the design principles guiding this project.

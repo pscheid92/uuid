@@ -179,7 +179,7 @@ func ExampleUUID_Value() {
 func ExampleUUID_stdlibInterop() {
 	std := stdlib.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
-	// Standard library -> this package: gain Version, Time, Scan/Value, ...
+	// Standard library -> this package: gain Version, Time, ...
 	id := uuid.UUID(std)
 	fmt.Println(id.Version())
 

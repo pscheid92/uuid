@@ -110,7 +110,7 @@ func (b BinaryUUID) Value() (driver.Value, error) {
 
 ## Standard Library Interop
 
-The Go 1.27 standard library `uuid` package defines `UUID` as `[16]byte`, exactly like this package, so `uuid.UUID(std)` and `stdlib.UUID(id)` are zero-cost conversions in either direction. The standard library offers `New`, `NewV4`, `NewV7`, lenient `Parse`, `MustParse`, `Nil`, `Max`, `String`, `Compare`, and text marshaling. Everything else in this package (`NewV5`, `NewV8`, `NewV7At`, `Version`, `Variant`, `Time`, strict `Parse`, `ParseError`, binary marshaling, `Scan`/`Value`, `Generator`, `Pool`, and the batch APIs) has no standard library equivalent. Convert at the boundary and keep this package's type internally.
+The Go 1.27 standard library `uuid` package defines `UUID` as `[16]byte`, exactly like this package, so `uuid.UUID(std)` and `stdlib.UUID(id)` are zero-cost conversions in either direction. The standard library offers `New`, `NewV4`, `NewV7`, lenient `Parse`, `MustParse`, `Nil`, `Max`, `String`, `Compare`, and text marshaling. Everything else in this package (`NewV5`, `NewV8`, `NewV7At`, `Version`, `Variant`, `Time`, strict `Parse`, `ParseError`, binary marshaling, `Generator`, `Pool`, and the batch APIs) has no standard library equivalent. `database/sql` supports both types: since Go 1.27 it scans into the standard library's `UUID` itself and its default converter binds one as a string, and this package's type implements `Scan` and `Value`. Convert at the boundary and keep this package's type internally.
 
 Note that the standard library's `NewV7` keeps one process-wide monotonic state; UUIDs from it and from a `Generator` or `Pool` here are not ordered relative to each other.
 
