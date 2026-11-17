@@ -58,10 +58,10 @@ A compare-and-swap loop on an atomic counter was measured as a replacement for t
 
 ## Pool: Amortizing crypto/rand
 
-`crypto/rand` is the dominant cost in UUID generation: a V4 call takes ~240 ns on macOS (Apple M2) and ~56 ns on Linux (x86-64 CI runner), nearly all of it the 16-byte read. `Pool` reduces this by pre-generating random bytes in bulk:
+`crypto/rand` is the dominant cost in UUID generation: a V4 call takes ~240 ns on macOS (Apple M2) and ~55–75 ns on Linux (x86-64 CI runners), nearly all of it the 16-byte read. `Pool` reduces this by pre-generating random bytes in bulk:
 
 - **V4 pool**: Pre-stamps 256 complete UUIDs per refill (one `crypto/rand.Read` of 4KB). Each `Pool.NewV4()` call just returns the next pre-built UUID.
-- **V7 pool**: Pre-generates 256 x 8-byte random chunks for `rand_b`. Timestamp and sub-ms sequence are computed live per call (they can't be pre-computed). This is why V7 pooling gains less than V4 pooling (~2x vs ~14x on macOS, ~1.2x vs ~2x on Linux) - `time.Now` is the remaining bottleneck.
+- **V7 pool**: Pre-generates 256 x 8-byte random chunks for `rand_b`. Timestamp and sub-ms sequence are computed live per call (they can't be pre-computed). This is why V7 pooling gains less than V4 pooling (~2x vs ~14x on macOS, ~1.1–1.2x vs ~1.6–2x on Linux) - `time.Now` is the remaining bottleneck.
 
 The size of the gain follows the cost of the read it removes, so it is much larger on macOS than on Linux. The macOS cost is specific to reads of more than about 10 bytes: an 8-byte read, as V7 needs, costs ~60 ns there.
 
