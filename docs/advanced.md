@@ -34,16 +34,20 @@ For hot paths, `Pool` amortizes the cost of `crypto/rand` by pre-generating rand
 
 ```go
 pool := uuid.NewPool()
-id := pool.NewV4() // ~14x faster than NewV4()
-id  = pool.NewV7() // ~2x faster than NewV7() (time.Now dominates)
+id := pool.NewV4() // ~2x faster than NewV4() on Linux, ~14x on macOS
+id  = pool.NewV7() // ~1.2x faster than NewV7() on Linux, ~2x on macOS (time.Now dominates)
 ```
+
+The gain is whatever a `crypto/rand` read costs on your platform, and for the 16-byte read of a V4 UUID that is about four times less on Linux than on macOS. Measure on the hardware you deploy to before adding a `Pool` for speed.
 
 For bulk workloads (database seeding, ETL, load testing), batch APIs generate many UUIDs with a single `crypto/rand` call:
 
 ```go
-ids := uuid.NewV4Batch(1000) // ~40x faster than calling NewV4() in a loop
-ids  = uuid.NewV7Batch(1000) // ~23x faster, all monotonically increasing
+ids := uuid.NewV4Batch(1000) // one crypto/rand call instead of 1000
+ids  = uuid.NewV7Batch(1000) // one crypto/rand call and one clock reading, all monotonically increasing
 ```
+
+At n=100 a batch is ~2x (V4) and ~5x (V7) faster than a loop of single calls on Linux, and ~30x and ~15x on macOS, where it grows to ~40x and ~23x at n=1000.
 
 To reuse a buffer instead of allocating a new slice each time, fill it in place. Both functions are allocation-free:
 
@@ -62,7 +66,7 @@ gen := uuid.NewGenerator()
 pool := uuid.NewPoolFor(gen) // pool.NewV7() continues gen's sequence
 ```
 
-`NewPoolFor(nil)` means the default generator, like `NewPool()`. Sharing an ordering means sharing its generator's lock: with one pool per goroutine on the default generator, every `NewV7` call waits on that lock (about 120 ns per call on 8 cores instead of about 12 ns). If those pools don't need to be ordered with each other, give each its own generator:
+`NewPoolFor(nil)` means the default generator, like `NewPool()`. Sharing an ordering means sharing its generator's lock: with one pool per goroutine on the default generator, every `NewV7` call waits on that lock (about 120 ns per call on 8 cores instead of about 12 ns, on an Apple M2). If those pools don't need to be ordered with each other, give each its own generator:
 
 ```go
 pool := uuid.NewPoolFor(uuid.NewGenerator()) // per-goroutine: independent ordering, no shared lock

@@ -103,33 +103,40 @@ var (
 type Version uint8
 
 // UUID version constants.
+//
+// V1, V2, V3, and V6 are the legacy versions. This package does not generate
+// them, but [Parse] accepts UUIDs of any version, so the constants are here
+// to compare against [UUID.Version].
 const (
 	VNil Version = 0
+	V1   Version = 1 // Gregorian time and node ID (legacy)
+	V2   Version = 2 // DCE Security (legacy)
+	V3   Version = 3 // MD5 name-based (legacy)
 	V4   Version = 4
 	V5   Version = 5
+	V6   Version = 6 // reordered Gregorian time (legacy)
 	V7   Version = 7
 	V8   Version = 8
 	VMax Version = 15
 )
 
-// String returns the version name. Legacy versions (V1, V2, V3, V6) are
-// named even though this package does not generate them, since [Parse]
-// accepts UUIDs of any version.
+// String returns the version name, including the legacy versions this
+// package does not generate.
 func (v Version) String() string {
 	switch v {
 	case VNil:
 		return "NIL"
-	case 1:
+	case V1:
 		return "V1"
-	case 2:
+	case V2:
 		return "V2"
-	case 3:
+	case V3:
 		return "V3"
 	case V4:
 		return "V4"
 	case V5:
 		return "V5"
-	case 6:
+	case V6:
 		return "V6"
 	case V7:
 		return "V7"
@@ -196,9 +203,9 @@ func (u UUID) IsNil() bool {
 
 // Bytes returns a copy of the UUID as a 16-byte slice.
 func (u UUID) Bytes() []byte {
-	b := make([]byte, 16)
-	copy(b, u[:])
-	return b
+	// u is this call's own copy, so slicing it yields a fresh slice the
+	// caller owns; this is faster than make and copy.
+	return u[:]
 }
 
 // Time extracts the millisecond-precision Unix timestamp from a V7 UUID.
